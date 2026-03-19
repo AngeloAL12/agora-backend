@@ -1,6 +1,6 @@
 name: Backend CI
 
-on: [push, pull_request]
+on: [ push, pull_request ]
 
 jobs:
   quality-check:
@@ -29,3 +29,6 @@ jobs:
 
       - name: Run Tests with Coverage
         run: uv run pytest --cov=app --cov-report=term-missing --cov-fail-under=80
+        env:
+          DATABASE_URL: postgresql://test
+          SECRET_KEY: test
