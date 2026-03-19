@@ -1,19 +1,28 @@
 name: Backend CI
 
-on: [push, pull_request]
+on: [ push, pull_request ]
 
 jobs:
   quality-check:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - name: Install uv
         uses: astral-sh/setup-uv@v1
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.11
+
+      - name: Install dependencies
+        run: uv sync --all-groups
+
       - name: Lint and Format
         run: |
           uv run ruff check .
           uv run ruff format --check .
-      - name: Run Tests
-        run: uv run pytest
+
       - name: Run Tests with Coverage
-        run: uv run pytest --cov-fail-under=80
+        run: uv run pytest --cov=app --cov-report=term-missing --cov-fail-under=80
