@@ -20,14 +20,23 @@ def test_test_endpoint():
 
 def test_health_check_db_success():
     """Test health check endpoint returns 200 when database is connected."""
-    response = client.get("/health/db")
-    assert response.status_code == 200
-    data = response.json()
-    assert data["status"] == "healthy"
-    assert data["database"] == "connected"
-    assert "details" in data
-    assert "dialect" in data["details"]
-    assert "driver" in data["details"]
+    with patch("app.main.get_db") as mock_get_db:
+        mock_session = MagicMock()
+        mock_session.execute.return_value.scalar.return_value = 1
+        mock_engine = MagicMock()
+        mock_engine.dialect.name = "postgresql"
+        mock_engine.driver = "psycopg2"
+        mock_session.get_bind.return_value = mock_engine
+        mock_get_db.return_value = iter([mock_session])
+
+        response = client.get("/health/db")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "healthy"
+        assert data["database"] == "connected"
+        assert "details" in data
+        assert "dialect" in data["details"]
+        assert "driver" in data["details"]
 
 
 def test_health_check_db_connection_failure():
