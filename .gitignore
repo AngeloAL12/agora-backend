@@ -16,6 +16,7 @@ __pycache__/
 .coverage
 htmlcov/
 .ruff_cache/
+test.db
 
 # Variables de entorno (¡CRÍTICO!)
 .env
