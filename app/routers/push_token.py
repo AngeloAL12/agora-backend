@@ -10,6 +10,7 @@ from app.schemas.push_token import PushTokenRequest
 
 router = APIRouter()
 
+
 @router.post("/push-token")
 def save_push_token(request: PushTokenRequest, db: Session = Depends(get_db)):
     # 1. Validar que el usuario exista
@@ -26,7 +27,7 @@ def save_push_token(request: PushTokenRequest, db: Session = Depends(get_db)):
         session = UserSession(
             id_user=request.user_id,
             push_token=request.push_token,
-            created_at=datetime.utcnow()
+            created_at=datetime.utcnow(),
         )
         db.add(session)
 
