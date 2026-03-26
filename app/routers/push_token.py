@@ -1,9 +1,11 @@
+from datetime import datetime
+
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from datetime import datetime
+
 from app.core.database import get_db
+from app.models.auth.user import User  # <-- importa el modelo User
 from app.models.auth.user_session import UserSession
-from app.models.auth.user import User   # <-- importa el modelo User
 from app.schemas.push_token import PushTokenRequest
 
 router = APIRouter()
