@@ -4,7 +4,6 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     ForeignKey,
-    Integer,
     String,
     UniqueConstraint,
     func,
@@ -16,6 +15,7 @@ from app.core.database import Base
 if TYPE_CHECKING:
     from app.models.auth.role import Role
     from app.models.auth.user_session import UserSession
+    from app.models.career import Career
 
 
 class User(Base):
@@ -35,7 +35,9 @@ class User(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     photo: Mapped[str | None] = mapped_column(String(500), nullable=True)
     id_role: Mapped[int] = mapped_column(ForeignKey("role.id"), nullable=False)
-    id_career: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    id_career: Mapped[int | None] = mapped_column(
+        ForeignKey("career.id"), nullable=True
+    )
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[DateTime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -48,4 +50,5 @@ class User(Base):
     )
 
     role: Mapped["Role"] = relationship(back_populates="users")
+    career: Mapped["Career | None"] = relationship(back_populates="users")
     sessions: Mapped[list["UserSession"]] = relationship(back_populates="user")
