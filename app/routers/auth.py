@@ -1,6 +1,6 @@
 import os
-import jwt
 
+import jwt
 from fastapi import APIRouter, Depends, HTTPException, status
 from google.auth.transport import requests as google_requests
 from google.oauth2 import id_token
@@ -9,10 +9,11 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+
 # Asegúrate de que estas funciones existan ahora en el app/core/security.py de develop
 from app.core.security import create_access_token, get_current_user
-from app.models.auth.user import User
 from app.models.auth.role import Role  # Importamos Role para buscar el ID dinámicamente
+from app.models.auth.user import User
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -32,7 +33,10 @@ def verify_and_save_user(
         # Buscamos el rol 'user' en lugar de quemar el id_role=1
         student_role = db.query(Role).filter(Role.name == "user").first()
         if not student_role:
-             raise HTTPException(status_code=500, detail="El rol 'user' no existe en la base de datos")
+            raise HTTPException(
+                status_code=500, 
+                detail="El rol 'user' no existe en la base de datos"
+)
 
         user = User(
             email=email,
