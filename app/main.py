@@ -1,17 +1,13 @@
 from fastapi import FastAPI
+from app.routers.auth import router as auth_router
+from app.routers.health import router as health_router # Si tienes uno de salud
 
-from app.routers.health import router as health_router
+app = FastAPI(title="Agora API")
 
-app = FastAPI()
-
+# Solo incluimos los routers necesarios
+app.include_router(auth_router)
 app.include_router(health_router)
-
 
 @app.get("/")
 def read_root():
-    return {"message": "Welcome to the Agora API!"}
-
-
-@app.get("/test")
-def test_endpoint():
-    return {"message": "This is a test endpoint."}
+    return {"message": "Bienvenido a la API de Agora"}
