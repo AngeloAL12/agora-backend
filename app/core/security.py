@@ -5,6 +5,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 from sqlalchemy.orm import Session
+from sqlalchemy import select
 
 from app.core.config import settings
 from app.core.database import get_db
@@ -54,6 +55,7 @@ def get_current_user(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token inválido",
+            headers={"WWW-Authenticate": "Bearer"},
         ) from e
 
     user_id = payload.get("sub")
@@ -61,6 +63,7 @@ def get_current_user(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token inválido",
+            headers={"WWW-Authenticate": "Bearer"},
         )
 
     try:
@@ -69,14 +72,16 @@ def get_current_user(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token inválido",
+            headers={"WWW-Authenticate": "Bearer"},
         ) from e
 
-    user = db.query(User).filter(User.id == user_id).first()
+    user = db.execute(select(User).where(User.id == user_id)).scalar_one_or_none()
 
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Usuario no encontrado",
+            headers={"WWW-Authenticate": "Bearer"},
         )
 
     if not user.is_active:
