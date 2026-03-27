@@ -8,7 +8,7 @@ os.environ.setdefault("DATABASE_URL", "sqlite:///./test.db")
 os.environ.setdefault("SECRET_KEY", "test-secret-key")
 
 from app.core.database import Base  # noqa: E402
-from app.main import app  # 👈 AGREGADO
+from app.main import app  # noqa: E402
 
 TEST_DATABASE_URL = "sqlite:///./test.db"
 
@@ -31,7 +31,6 @@ def db(test_engine):
     session.close()
 
 
-# 👇 ESTE ES EL QUE TE FALTABA
 @pytest.fixture
 def clear_dependency_overrides():
     yield
