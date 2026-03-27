@@ -7,7 +7,7 @@ from app.core.security import (
     require_staff,
 )
 
-router = APIRouter(tags=["users"])
+router = APIRouter(prefix="/users", tags=["users"])
 
 
 @router.get("/me")
