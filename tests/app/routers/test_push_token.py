@@ -6,10 +6,13 @@ from tests.test_setup import insert_role, insert_user
 
 client = TestClient(app)
 
+
 def fake_user():
     class FakeUser:
         id = 1
+
     return FakeUser()
+
 
 def test_push_token_creates_new_session():
     insert_role()
@@ -25,6 +28,7 @@ def test_push_token_creates_new_session():
     assert response.status_code == 200
     assert response.json()["message"] == "Push token guardado correctamente"
     app.dependency_overrides = {}
+
 
 def test_push_token_updates_existing_session():
     insert_role()

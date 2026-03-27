@@ -5,6 +5,7 @@ from tests.test_setup import insert_role, insert_user
 
 client = TestClient(app)
 
+
 def test_get_current_user_invalid_token():
     # Token no convertible a int
     response = client.post(
@@ -14,6 +15,7 @@ def test_get_current_user_invalid_token():
     )
     assert response.status_code == 401
     assert response.json()["detail"] == "Token inválido"
+
 
 def test_get_current_user_user_not_found():
     insert_role()
