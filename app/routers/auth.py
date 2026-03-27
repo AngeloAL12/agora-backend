@@ -1,6 +1,6 @@
 import os
-
 import jwt
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from google.auth.transport import requests as google_requests
 from google.oauth2 import id_token
@@ -9,15 +9,15 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+# Asegúrate de que estas funciones existan ahora en el app/core/security.py de develop
 from app.core.security import create_access_token, get_current_user
 from app.models.auth.user import User
+from app.models.auth.role import Role  # Importamos Role para buscar el ID dinámicamente
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-
 class TokenRequest(BaseModel):
     token: str
-
 
 def verify_and_save_user(
     email: str, name: str, oauth_provider: str, oauth_sub: str, db: Session
@@ -29,19 +29,23 @@ def verify_and_save_user(
     )
 
     if not user:
+        # Buscamos el rol 'user' en lugar de quemar el id_role=1
+        student_role = db.query(Role).filter(Role.name == "user").first()
+        if not student_role:
+             raise HTTPException(status_code=500, detail="El rol 'user' no existe en la base de datos")
+
         user = User(
             email=email,
             name=name,
             oauth_provider=oauth_provider,
             oauth_sub=oauth_sub,
-            id_role=1,
+            id_role=student_role.id,  # Asignamos el ID dinámico
             is_active=True,
         )
         db.add(user)
         db.commit()
         db.refresh(user)
     return user
-
 
 @router.post("/google/mobile-login")
 def google_mobile_login(request_data: TokenRequest, db: Session = Depends(get_db)):
@@ -66,13 +70,13 @@ def google_mobile_login(request_data: TokenRequest, db: Session = Depends(get_db
         oauth_sub=idinfo.get("sub"),
         db=db,
     )
-    access_token = create_access_token(data={"sub": user.email})
+    # Cambiamos sub: user.email a sub: str(user.id)
+    access_token = create_access_token(data={"sub": str(user.id)})
     return {
         "access_token": access_token,
         "token_type": "bearer",
         "user": {"id": user.id, "email": user.email, "name": user.name},
     }
-
 
 @router.post("/microsoft/mobile-login")
 def microsoft_mobile_login(request_data: TokenRequest, db: Session = Depends(get_db)):
@@ -106,13 +110,13 @@ def microsoft_mobile_login(request_data: TokenRequest, db: Session = Depends(get
         oauth_sub=idinfo.get("sub"),
         db=db,
     )
-    access_token = create_access_token(data={"sub": user.email})
+    # Cambiamos sub: user.email a sub: str(user.id)
+    access_token = create_access_token(data={"sub": str(user.id)})
     return {
         "access_token": access_token,
         "token_type": "bearer",
         "user": {"id": user.id, "email": user.email, "name": user.name},
     }
-
 
 @router.get("/me")
 def read_users_me(current_user: User = Depends(get_current_user)):
