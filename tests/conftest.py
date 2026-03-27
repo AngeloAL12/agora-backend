@@ -46,3 +46,8 @@ def override_get_db():
 @pytest.fixture(autouse=True)
 def apply_override():
     app.dependency_overrides[get_db] = override_get_db
+
+
+def clear_dependency_overrides():
+    yield
+    app.dependency_overrides.clear()
