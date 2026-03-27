@@ -9,6 +9,7 @@ app = FastAPI(title="Agora API")
 app.include_router(auth_router)
 app.include_router(health_router)
 
+
 @app.get("/")
 def read_root():
     return {"message": "Bienvenido a la API de Agora"}
