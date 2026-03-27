@@ -1,4 +1,5 @@
 from app.models.auth import Role, StaffWhitelist, User, UserSession
+from app.models.career import Career
 
 
 def test_create_role(db):
@@ -13,9 +14,12 @@ def test_create_role(db):
 
 def test_create_user(db):
     role = Role(name="student")
+    career = Career(name="Ing. Sistemas Computacionales")
     db.add(role)
+    db.add(career)
     db.commit()
     db.refresh(role)
+    db.refresh(career)
 
     user = User(
         email="user@example.com",
@@ -24,7 +28,7 @@ def test_create_user(db):
         name="Test User",
         photo="https://example.com/photo.jpg",
         id_role=role.id,
-        id_career=42,
+        id_career=career.id,
         is_active=True,
     )
     db.add(user)
@@ -33,6 +37,9 @@ def test_create_user(db):
 
     assert user.id is not None
     assert user.id_role == role.id
+    assert user.id_career == career.id
+    assert user.career is not None
+    assert user.career.name == "Ing. Sistemas Computacionales"
     assert user.role.name == "student"
     assert user.created_at is not None
     assert user.updated_at is not None

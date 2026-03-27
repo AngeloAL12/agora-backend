@@ -6,8 +6,8 @@ from sqlalchemy.orm import sessionmaker
 os.environ.setdefault("DATABASE_URL", "sqlite:///./test.db")
 os.environ.setdefault("SECRET_KEY", "test-secret-key")
 
-from app.core.database import Base, get_db
-from app.main import app
+from app.core.database import Base, get_db  # noqa: E402
+from app.main import app  # noqa: E402
 
 TEST_DATABASE_URL = "sqlite:///./test.db"
 
@@ -29,7 +29,7 @@ def create_test_db():
     yield
     Base.metadata.drop_all(bind=engine)
 
-@pytest.fixture(autouse=True)
+@pytest.fixture
 def db():
     session = TestingSessionLocal()
     Base.metadata.drop_all(bind=engine)
@@ -38,7 +38,6 @@ def db():
         yield session
     finally:
         session.close()
-
 
 def override_get_db():
     session = TestingSessionLocal()
@@ -50,3 +49,8 @@ def override_get_db():
 @pytest.fixture(autouse=True)
 def apply_override():
     app.dependency_overrides[get_db] = override_get_db
+
+@pytest.fixture
+def clear_dependency_overrides():
+    yield
+    app.dependency_overrides.clear()
