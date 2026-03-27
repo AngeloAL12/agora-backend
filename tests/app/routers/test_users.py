@@ -1,6 +1,11 @@
 from fastapi.testclient import TestClient
 
-from app.core.security import CurrentUser, get_current_user, require_admin, require_staff
+from app.core.security import (
+    CurrentUser,
+    get_current_user,
+    require_admin,
+    require_staff,
+)
 from app.main import app
 
 
