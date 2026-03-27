@@ -54,7 +54,7 @@ def login(data: LoginRequest, db: Session = Depends(get_db)):
         try:
             db.commit()
             db.refresh(user)
-        except IntegrityError:
+        except IntegrityError as e:
             db.rollback()
             user = (
                 db.query(User)
@@ -68,7 +68,7 @@ def login(data: LoginRequest, db: Session = Depends(get_db)):
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail="No se pudo crear u obtener el usuario",
-                )
+                ) from e
 
     else:
         updated = False

@@ -17,5 +17,5 @@ def health_db(db: Session = Depends(get_db)):
     try:
         db.execute(text("SELECT 1"))
         return {"status": "ok"}
-    except Exception:
-        raise HTTPException(status_code=503, detail="Database unavailable")
+    except Exception as e:
+        raise HTTPException(status_code=503, detail="Database unavailable") from e
