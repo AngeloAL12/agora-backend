@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, EmailStr
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -49,8 +50,26 @@ def login(data: LoginRequest, db: Session = Depends(get_db)):
         )
 
         db.add(user)
-        db.commit()
-        db.refresh(user)
+
+        try:
+            db.commit()
+            db.refresh(user)
+        except IntegrityError:
+            db.rollback()
+            user = (
+                db.query(User)
+                .filter(
+                    User.oauth_provider == data.oauth_provider,
+                    User.oauth_sub == data.oauth_sub,
+                )
+                .first()
+            )
+            if not user:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="No se pudo crear u obtener el usuario",
+                )
+
     else:
         updated = False
 
