@@ -4,18 +4,23 @@ from typing import Any
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
-from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.roles import RoleName
 from app.models.auth.user import User
+from app.schemas.auth import CurrentUser
 
 SECRET_KEY = settings.SECRET_KEY
 ALGORITHM = settings.ALGORITHM
 ACCESS_TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
 
 security = HTTPBearer()
+
+
+class TokenDecodeError(Exception):
+    pass
 
 
 def create_access_token(
@@ -34,16 +39,7 @@ def decode_access_token(token: str) -> dict[str, Any]:
     try:
         return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
     except JWTError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token inválido",
-            headers={"WWW-Authenticate": "Bearer"},
-        ) from exc
-
-
-class CurrentUser(BaseModel):
-    id: int
-    role: str
+        raise TokenDecodeError("Token inválido") from exc
 
 
 def get_current_user(
@@ -51,7 +47,14 @@ def get_current_user(
     db: Session = Depends(get_db),
 ) -> CurrentUser:
     token = credentials.credentials
-    payload = decode_access_token(token)
+
+    try:
+        payload = decode_access_token(token)
+    except TokenDecodeError as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token inválido",
+        ) from e
 
     user_id = payload.get("sub")
     if not user_id:
@@ -94,7 +97,7 @@ def get_current_user(
 def require_admin(
     current_user: CurrentUser = Depends(get_current_user),
 ) -> CurrentUser:
-    if current_user.role != "admin":
+    if current_user.role != RoleName.ADMIN:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Solo admin",
@@ -105,7 +108,7 @@ def require_admin(
 def require_staff(
     current_user: CurrentUser = Depends(get_current_user),
 ) -> CurrentUser:
-    if current_user.role not in {"admin", "staff"}:
+    if current_user.role not in {RoleName.ADMIN, RoleName.STAFF}:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Solo staff",
