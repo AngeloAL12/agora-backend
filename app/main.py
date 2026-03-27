@@ -1,6 +1,7 @@
 from fastapi import FastAPI
+
 from app.routers.auth import router as auth_router
-from app.routers.health import router as health_router # Si tienes uno de salud
+from app.routers.health import router as health_router  # Si tienes uno de salud
 
 app = FastAPI(title="Agora API")
 
