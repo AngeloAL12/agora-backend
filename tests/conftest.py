@@ -1,14 +1,14 @@
 import os
 
 import pytest
+
+os.environ["DATABASE_URL"] = "sqlite:///./test.db"
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.core.database import Base, get_db
 from app.main import app
 
-# Forzar SQLite en entorno de pruebas
-os.environ["DATABASE_URL"] = "sqlite:///./test.db"
 os.environ.setdefault("SECRET_KEY", "test-secret-key")
 
 TEST_DATABASE_URL = os.environ["DATABASE_URL"]
