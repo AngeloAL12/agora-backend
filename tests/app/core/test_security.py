@@ -95,11 +95,8 @@ def test_get_current_user_success():
     fake_role = SimpleNamespace(name=RoleName.USER)
     fake_user = SimpleNamespace(id=1, is_active=True, role=fake_role)
 
-    fake_query = MagicMock()
-    fake_query.filter.return_value.first.return_value = fake_user
-
     fake_db = MagicMock()
-    fake_db.query.return_value = fake_query
+    fake_db.execute.return_value.scalar_one_or_none.return_value = fake_user
 
     result = get_current_user(credentials, fake_db)
 
@@ -129,11 +126,8 @@ def test_get_current_user_user_not_found():
         credentials=fake_token,
     )
 
-    fake_query = MagicMock()
-    fake_query.filter.return_value.first.return_value = None
-
     fake_db = MagicMock()
-    fake_db.query.return_value = fake_query
+    fake_db.execute.return_value.scalar_one_or_none.return_value = None
 
     with pytest.raises(HTTPException) as exc_info:
         get_current_user(credentials, fake_db)
@@ -152,11 +146,8 @@ def test_get_current_user_inactive_user():
     fake_role = SimpleNamespace(name=RoleName.USER)
     fake_user = SimpleNamespace(id=1, is_active=False, role=fake_role)
 
-    fake_query = MagicMock()
-    fake_query.filter.return_value.first.return_value = fake_user
-
     fake_db = MagicMock()
-    fake_db.query.return_value = fake_query
+    fake_db.execute.return_value.scalar_one_or_none.return_value = fake_user
 
     with pytest.raises(HTTPException) as exc_info:
         get_current_user(credentials, fake_db)
@@ -174,11 +165,8 @@ def test_get_current_user_without_role():
 
     fake_user = SimpleNamespace(id=1, is_active=True, role=None)
 
-    fake_query = MagicMock()
-    fake_query.filter.return_value.first.return_value = fake_user
-
     fake_db = MagicMock()
-    fake_db.query.return_value = fake_query
+    fake_db.execute.return_value.scalar_one_or_none.return_value = fake_user
 
     with pytest.raises(HTTPException) as exc_info:
         get_current_user(credentials, fake_db)
