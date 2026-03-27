@@ -21,6 +21,7 @@ def save_push_token(
 
     if session:
         session.push_token = payload.push_token
+
     else:
         session = UserSession(
             id_user=current_user.id,

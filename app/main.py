@@ -17,4 +17,5 @@ def read_root():
 def test_endpoint():
     return {"message": "This is a test endpoint."}
 
+
 app.include_router(push_token.router)
