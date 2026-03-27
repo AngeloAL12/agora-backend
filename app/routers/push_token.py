@@ -11,6 +11,7 @@ from app.schemas.push_token import PushTokenRequest
 
 router = APIRouter()
 
+
 @router.post("/push-token")
 def save_push_token(
     payload: PushTokenRequest,
@@ -18,9 +19,7 @@ def save_push_token(
     current_user: User = Depends(get_current_user),
 ):
     session = (
-        db.query(UserSession)
-        .filter(UserSession.id_user == current_user.id)
-        .first()
+        db.query(UserSession).filter(UserSession.id_user == current_user.id).first()
     )
     now = datetime.now(UTC)
 
