@@ -17,8 +17,10 @@ from app.models.auth.user import User
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
+
 class TokenRequest(BaseModel):
     token: str
+
 
 def verify_and_save_user(
     email: str, name: str, oauth_provider: str, oauth_sub: str, db: Session
@@ -34,9 +36,8 @@ def verify_and_save_user(
         student_role = db.query(Role).filter(Role.name == "user").first()
         if not student_role:
             raise HTTPException(
-                status_code=500, 
-                detail="El rol 'user' no existe en la base de datos"
-)
+                status_code=500, detail="El rol 'user' no existe en la base de datos"
+            )
 
         user = User(
             email=email,
@@ -50,6 +51,7 @@ def verify_and_save_user(
         db.commit()
         db.refresh(user)
     return user
+
 
 @router.post("/google/mobile-login")
 def google_mobile_login(request_data: TokenRequest, db: Session = Depends(get_db)):
@@ -81,6 +83,7 @@ def google_mobile_login(request_data: TokenRequest, db: Session = Depends(get_db
         "token_type": "bearer",
         "user": {"id": user.id, "email": user.email, "name": user.name},
     }
+
 
 @router.post("/microsoft/mobile-login")
 def microsoft_mobile_login(request_data: TokenRequest, db: Session = Depends(get_db)):
@@ -121,6 +124,7 @@ def microsoft_mobile_login(request_data: TokenRequest, db: Session = Depends(get
         "token_type": "bearer",
         "user": {"id": user.id, "email": user.email, "name": user.name},
     }
+
 
 @router.get("/me")
 def read_users_me(current_user: User = Depends(get_current_user)):
