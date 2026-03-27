@@ -1,6 +1,7 @@
+from app.core.database import get_db
 from app.models.auth.role import Role
 from app.models.auth.user import User
-from app.core.database import get_db
+
 
 def insert_role(id=1, name="admin"):
     db = next(get_db())

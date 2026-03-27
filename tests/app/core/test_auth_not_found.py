@@ -1,4 +1,5 @@
 from fastapi.testclient import TestClient
+
 from app.main import app
 from tests.test_setup import insert_role, insert_user
 
