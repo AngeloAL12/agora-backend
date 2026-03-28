@@ -3,33 +3,65 @@ import os
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
-os.environ.setdefault("DATABASE_URL", "sqlite:///./test.db")
-os.environ.setdefault("SECRET_KEY", "test-secret-key")
+from app.core.database import Base, get_db
+from app.main import app
+from app.models.auth.role import Role
 
-from app.core.database import Base  # noqa: E402
-from app.main import app  # noqa: E402
-from app.models.auth.role import Role  # noqa: E402
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///:memory:")
+SECRET_KEY = os.getenv("SECRET_KEY", "test-secret-key")
 
-TEST_DATABASE_URL = "sqlite:///./test.db"
+if DATABASE_URL.startswith("sqlite"):
+    engine = create_engine(
+        DATABASE_URL,
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+else:
+    engine = create_engine(DATABASE_URL)
+
+TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
-@pytest.fixture(scope="session")
-def test_engine():
-    engine = create_engine(TEST_DATABASE_URL, connect_args={"check_same_thread": False})
-    Base.metadata.create_all(engine)
-    yield engine
-    Base.metadata.drop_all(engine)
-    engine.dispose()
+@pytest.fixture(scope="session", autouse=True)
+def create_test_db():
+    Base.metadata.drop_all(bind=engine)
+    Base.metadata.create_all(bind=engine)
+    yield
+    Base.metadata.drop_all(bind=engine)
+
+
+def override_get_db():
+    db = TestingSessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+@pytest.fixture(autouse=True)
+def apply_override():
+    app.dependency_overrides[get_db] = override_get_db
+    yield
+    app.dependency_overrides.pop(get_db, None)
 
 
 @pytest.fixture
-def db(test_engine):
-    session_factory = sessionmaker(bind=test_engine)
-    session = session_factory()
-    yield session
-    session.rollback()
-    session.close()
+def db():
+    session = TestingSessionLocal()
+    try:
+        yield session
+    finally:
+        session.close()
+
+
+@pytest.fixture(autouse=True)
+def clean_db(db):
+    for table in reversed(Base.metadata.sorted_tables):
+        db.execute(table.delete())
+    db.commit()
+    yield
 
 
 @pytest.fixture
