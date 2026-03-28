@@ -3,6 +3,7 @@ import os
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from app.core.database import Base, get_db
 from app.main import app
@@ -10,8 +11,15 @@ from app.main import app
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///:memory:")
 SECRET_KEY = os.getenv("SECRET_KEY", "test-secret-key")
 
+if DATABASE_URL.startswith("sqlite"):
+    engine = create_engine(
+        DATABASE_URL,
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+else:
+    engine = create_engine(DATABASE_URL)
 
-engine = create_engine(DATABASE_URL)
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
@@ -31,11 +39,11 @@ def override_get_db():
         db.close()
 
 
-@pytest.fixture(scope="session", autouse=True)
+@pytest.fixture(autouse=True)
 def apply_override():
     app.dependency_overrides[get_db] = override_get_db
     yield
-    app.dependency_overrides.clear()
+    app.dependency_overrides.pop(get_db, None)
 
 
 @pytest.fixture
