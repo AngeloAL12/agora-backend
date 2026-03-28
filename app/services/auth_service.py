@@ -1,8 +1,12 @@
-from fastapi import HTTPException
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.auth.role import Role
 from app.models.auth.user import User
+
+
+class RoleNotFoundError(Exception):
+    """Raised when the 'user' role does not exist in the database."""
 
 
 def verify_and_save_user(
@@ -12,22 +16,21 @@ def verify_and_save_user(
     Lógica de negocio para buscar un usuario existente o
     crear uno nuevo con el rol 'user'.
     """
-    user = (
-        db.query(User)
-        .filter(User.oauth_provider == oauth_provider, User.oauth_sub == oauth_sub)
-        .first()
-    )
+    user = db.execute(
+        select(User).where(
+            User.oauth_provider == oauth_provider,
+            User.oauth_sub == oauth_sub,
+        )
+    ).scalar_one_or_none()
 
     if not user:
-        # Buscamos el rol 'user' dinámicamente
-        student_role = db.query(Role).filter(Role.name == "user").first()
+        student_role = db.execute(
+            select(Role).where(Role.name == "user")
+        ).scalar_one_or_none()
+
         if not student_role:
-            raise HTTPException(
-                status_code=500,
-                detail=(
-                    "Error de configuración: El rol 'user' "
-                    "no existe en la base de datos"
-                ),
+            raise RoleNotFoundError(
+                "Error de configuración: El rol 'user' no existe en la base de datos"
             )
 
         user = User(

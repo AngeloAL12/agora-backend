@@ -1,17 +1,12 @@
 import pytest
-from fastapi import HTTPException
+from sqlalchemy import select
 
-from app.models.auth.role import Role
 from app.models.auth.user import User
-from app.services.auth_service import verify_and_save_user
+from app.services.auth_service import RoleNotFoundError, verify_and_save_user
 
 
-def test_verify_and_save_user_new(db):
+def test_verify_and_save_user_new(db, user_role):
     """Prueba que un usuario nuevo se guarde correctamente en la BD"""
-    if not db.query(Role).filter(Role.name == "user").first():
-        db.add(Role(name="user"))
-        db.commit()
-
     user = verify_and_save_user(
         db=db,
         email="nuevo@itmexicali.edu.mx",
@@ -24,13 +19,8 @@ def test_verify_and_save_user_new(db):
     assert user.email == "nuevo@itmexicali.edu.mx"
 
 
-def test_verify_and_save_user_existing(db):
+def test_verify_and_save_user_existing(db, user_role):
     """Prueba que si el usuario ya existe, no se duplique"""
-    if not db.query(Role).filter(Role.name == "user").first():
-        db.add(Role(name="user"))
-        db.commit()
-
-    # Creamos el usuario la primera vez
     verify_and_save_user(
         db=db,
         email="existe@itmexicali.edu.mx",
@@ -39,7 +29,6 @@ def test_verify_and_save_user_existing(db):
         oauth_sub="sub-existe",
     )
 
-    # Lo volvemos a llamar (simulando un segundo login)
     user_second_time = verify_and_save_user(
         db=db,
         email="existe@itmexicali.edu.mx",
@@ -48,19 +37,23 @@ def test_verify_and_save_user_existing(db):
         oauth_sub="sub-existe",
     )
 
-    # Verificamos que solo haya 1 en la base de datos con ese sub
-    count = db.query(User).filter(User.oauth_sub == "sub-existe").count()
-    assert count == 1
+    count = (
+        db.execute(select(User).where(User.oauth_sub == "sub-existe")).scalars().all()
+    )
+    assert len(count) == 1
     assert user_second_time.email == "existe@itmexicali.edu.mx"
 
 
 def test_verify_and_save_user_missing_role(db):
-    """Prueba que lance error 500 si el rol 'user' no existe en la BD"""
-    # Nos aseguramos de borrar el rol 'user' si existe
-    db.query(Role).filter(Role.name == "user").delete()
+    """Prueba que lance RoleNotFoundError si el rol 'user' no existe en la BD"""
+    from sqlalchemy import delete
+
+    from app.models.auth.role import Role
+
+    db.execute(delete(Role).where(Role.name == "user"))
     db.commit()
 
-    with pytest.raises(HTTPException) as exc_info:
+    with pytest.raises(RoleNotFoundError):
         verify_and_save_user(
             db=db,
             email="fallo@itmexicali.edu.mx",
@@ -68,5 +61,3 @@ def test_verify_and_save_user_missing_role(db):
             oauth_provider="google",
             oauth_sub="sub-fallo",
         )
-
-    assert exc_info.value.status_code == 500
