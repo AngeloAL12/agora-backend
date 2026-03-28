@@ -6,10 +6,10 @@ client = TestClient(app)
 
 
 def test_read_root():
-    """Prueba el endpoint raíz '/' que ahora devuelve el mensaje de bienvenida."""
+    """Prueba el endpoint raíz que devuelve el mensaje de bienvenida."""
     response = client.get("/")
     assert response.status_code == 200
-    # Verificamos que el JSON coincida exactamente con tu app/main.py
+    # Asegúrate de que este string sea IDÉNTICO al de app/main.py
     assert response.json() == {"message": "Welcome to the Agora API!"}
 
 
