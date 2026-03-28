@@ -4,18 +4,13 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from app.core.database import Base, engine, get_db
+from app.core.database import Base, get_db
 from app.main import app
 
-# Forzar las variables de entorno correctas
-os.environ["DATABASE_URL"] = "postgresql://postgres:12345@localhost:5432/agora_test"
-os.environ["SECRET_KEY"] = "test"
-Base.metadata.create_all(bind=engine)
-DATABASE_URL = os.getenv("DATABASE_URL")
-if not DATABASE_URL:
-    raise RuntimeError("DATABASE_URL no está definido")
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///:memory:")
+SECRET_KEY = os.getenv("SECRET_KEY", "test-secret-key")
 
-# Crear engine y sesión de pruebas
+
 engine = create_engine(DATABASE_URL)
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
@@ -36,13 +31,9 @@ def override_get_db():
         db.close()
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture(scope="session", autouse=True)
 def apply_override():
     app.dependency_overrides[get_db] = override_get_db
-
-
-@pytest.fixture
-def clear_dependency_overrides():
     yield
     app.dependency_overrides.clear()
 
@@ -56,10 +47,15 @@ def db():
         session.close()
 
 
-# 🔧 Solución 1: limpiar tablas antes de cada test
 @pytest.fixture(autouse=True)
 def clean_db(db):
     for table in reversed(Base.metadata.sorted_tables):
         db.execute(table.delete())
     db.commit()
     yield
+
+
+@pytest.fixture
+def clear_dependency_overrides():
+    yield
+    app.dependency_overrides.clear()
