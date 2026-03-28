@@ -32,7 +32,7 @@ def create_access_token(
     expire = datetime.now(UTC) + (
         expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     )
-    to_encode.update({"exp": expire})
+    to_encode |= {"exp": expire}
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 
@@ -96,7 +96,7 @@ def get_current_user(
             detail="Usuario sin rol asignado",
         )
 
-    return CurrentUser(id=user.id, role=user.role.name)
+    return CurrentUser(id=user.id, role=RoleName(user.role.name))
 
 
 def require_admin(

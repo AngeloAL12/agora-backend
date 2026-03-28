@@ -28,7 +28,7 @@ class User(Base):
         ),
     )
 
-    id: Mapped[int] = mapped_column(primary_key=True)
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     oauth_provider: Mapped[str] = mapped_column(String(50), nullable=False)
     oauth_sub: Mapped[str] = mapped_column(String(255), nullable=False)
