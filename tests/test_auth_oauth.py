@@ -14,6 +14,8 @@ def override_dependency(db):
     app.dependency_overrides[get_db] = lambda: db
     yield
     app.dependency_overrides.clear()
+
+
 # -----------------------------------------------------
 
 client = TestClient(app)

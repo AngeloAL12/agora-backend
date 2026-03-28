@@ -15,14 +15,14 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 @router.post("/google/mobile-login")
 def google_mobile_login(request_data: TokenRequest, db: Session = Depends(get_db)):
-  
+
     client_id = settings.GOOGLE_CLIENT_ID
-    
+
     try:
         idinfo = id_token.verify_oauth2_token(
             request_data.token, google_requests.Request(), client_id
         )
-        
+
         email = idinfo.get("email")
         if not email or not email.endswith("@itmexicali.edu.mx"):
             raise HTTPException(
@@ -55,7 +55,7 @@ def google_mobile_login(request_data: TokenRequest, db: Session = Depends(get_db
 def microsoft_mobile_login(request_data: TokenRequest, db: Session = Depends(get_db)):
     try:
         unverified_claims = jwt.get_unverified_claims(request_data.token)
-        
+
         email = unverified_claims.get("email")
         if not email or not email.endswith("@mexicali.tecnm.mx"):
             raise HTTPException(
