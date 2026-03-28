@@ -7,6 +7,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.core.database import Base, get_db
 from app.main import app
+from app.models.auth.role import Role
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///:memory:")
 SECRET_KEY = os.getenv("SECRET_KEY", "test-secret-key")
@@ -67,3 +68,15 @@ def clean_db(db):
 def clear_dependency_overrides():
     yield
     app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def user_role(db):
+    from sqlalchemy import select
+
+    role = db.execute(select(Role).where(Role.name == "user")).scalar_one_or_none()
+    if not role:
+        role = Role(name="user")
+        db.add(role)
+        db.commit()
+    return role
