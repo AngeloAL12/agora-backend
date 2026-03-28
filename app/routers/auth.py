@@ -15,19 +15,22 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 @router.post("/google/mobile-login")
 def google_mobile_login(request_data: TokenRequest, db: Session = Depends(get_db)):
-    # Usamos settings. Si GOOGLE_CLIENT_ID no está en .env,
-    # Pydantic lo detecta al iniciar
+  
     client_id = settings.GOOGLE_CLIENT_ID
-
+    
     try:
         idinfo = id_token.verify_oauth2_token(
             request_data.token, google_requests.Request(), client_id
         )
+        
         email = idinfo.get("email")
         if not email or not email.endswith("@itmexicali.edu.mx"):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Acceso denegado. Se requiere correo institucional.",
+                detail=(
+                    "Acceso denegado. Se requiere correo institucional "
+                    "(@itmexicali.edu.mx)"
+                ),
             )
     except ValueError as err:
         raise HTTPException(status_code=401, detail="Token de Google inválido") from err
@@ -50,17 +53,17 @@ def google_mobile_login(request_data: TokenRequest, db: Session = Depends(get_db
 
 @router.post("/microsoft/mobile-login")
 def microsoft_mobile_login(request_data: TokenRequest, db: Session = Depends(get_db)):
-    # Eliminamos la asignación de client_id porque no se usa (Evita F841)
     try:
-        # Nota: verify_iss=False para soportar multi-tenant (Azure AD).
-        # Esto permite usuarios de diferentes dominios de la organización.
-        idinfo = jwt.get_unverified_claims(request_data.token)
-
-        email = idinfo.get("email") or idinfo.get("preferred_username")
+        unverified_claims = jwt.get_unverified_claims(request_data.token)
+        
+        email = unverified_claims.get("email")
         if not email or not email.endswith("@mexicali.tecnm.mx"):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Acceso denegado. Se requiere correo de TecNM.",
+                detail=(
+                    "Acceso denegado. Se requiere correo institucional "
+                    "(@mexicali.tecnm.mx)"
+                ),
             )
 
     except JWTError as err:
@@ -71,9 +74,9 @@ def microsoft_mobile_login(request_data: TokenRequest, db: Session = Depends(get
     user = verify_and_save_user(
         db=db,
         email=email,
-        name=idinfo.get("name", "Estudiante TecNM"),
+        name=unverified_claims.get("name", "Estudiante TecNM"),
         oauth_provider="microsoft",
-        oauth_sub=idinfo.get("sub"),
+        oauth_sub=unverified_claims.get("sub"),
     )
 
     access_token = create_access_token(data={"sub": str(user.id)})

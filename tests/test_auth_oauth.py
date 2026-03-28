@@ -1,15 +1,14 @@
-import pytest
 from unittest.mock import patch
 
+import pytest
 from fastapi.testclient import TestClient
 from jose import JWTError
 
+from app.core.database import get_db
 from app.main import app
 from app.models.auth.role import Role
-from app.core.database import get_db
 
-# --- CONFIGURACIÓN OFICIAL DE TESTING PARA FASTAPI ---
-# Sobreescribimos la dependencia de la BD para que las rutas usen la BD de pruebas (fixture 'db')
+
 @pytest.fixture(autouse=True)
 def override_dependency(db):
     app.dependency_overrides[get_db] = lambda: db
@@ -74,7 +73,7 @@ def test_google_login_expired_token(mock_verify, db):
 @patch("jose.jwt.get_unverified_claims")
 def test_microsoft_login_success(mock_jwt, db):
     if not db.query(Role).filter(Role.name == "user").first():
-        db.add(Role(name="user"))
+        db.add(Role(name="user"))  # <-- Solo deja el 'name'
         db.commit()
 
     mock_jwt.return_value = {
