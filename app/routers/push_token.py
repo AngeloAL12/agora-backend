@@ -1,5 +1,3 @@
-from datetime import UTC, datetime
-
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
@@ -21,7 +19,6 @@ def save_push_token(
     session = (
         db.query(UserSession).filter(UserSession.id_user == current_user.id).first()
     )
-    now = datetime.now(UTC)
 
     if session:
         session.push_token = payload.push_token
@@ -29,7 +26,6 @@ def save_push_token(
         session = UserSession(
             id_user=current_user.id,
             push_token=payload.push_token,
-            created_at=now,
         )
         db.add(session)
 
