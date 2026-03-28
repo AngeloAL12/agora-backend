@@ -10,7 +10,7 @@ def test_read_root():
     response = client.get("/")
     assert response.status_code == 200
     # Verificamos que el JSON coincida exactamente con tu app/main.py
-    assert response.json() == {"message": "Bienvenido a la API de Agora"}
+    assert response.json() == {"message": "Welcome to the Agora API!"}
 
 
 # El endpoint '/test' fue eliminado en tu versión más reciente de main.py,
