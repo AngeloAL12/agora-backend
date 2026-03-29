@@ -51,3 +51,8 @@ def test_push_token_updates_existing_session(mock_user):
     response = client.post("/push-token", json={"push_token": "updated"})
     assert response.status_code == 200
     assert response.json()["message"] == "Push token guardado correctamente"
+
+
+def test_push_token_rejects_empty_string(mock_user):
+    response = client.post("/push-token", json={"push_token": ""})
+    assert response.status_code == 422
