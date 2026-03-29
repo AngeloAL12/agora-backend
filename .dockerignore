@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+*.egg-info/
+
+# Test / coverage artifacts
+.pytest_cache/
+htmlcov/
+.coverage
+coverage.xml
+test.db
+
+# Environment files (secrets stay out of the image)
+.env
+.env.*
+!.env.example
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+*.swp
+
+# Git
+.git/
+.gitignore
+
+# CI / dev tooling
+.github/
+.pre-commit-config.yaml
+.python-version
+pyrightconfig.json
+
+# Docs / collections
+README.md
+CLAUDE.md
+Agora-BackEnd/
+
+# uv local cache
+.uv/
