@@ -30,7 +30,10 @@ def test_read_users_me_unauthorized():
 
 @patch("google.oauth2.id_token.verify_oauth2_token")
 def test_google_login_success(mock_verify, user_role):
+    from app.core.config import settings
+
     mock_verify.return_value = {
+        "aud": settings.GOOGLE_IOS_CLIENT_ID or settings.GOOGLE_CLIENT_ID,
         "email": "test@itmexicali.edu.mx",
         "name": "Test User",
         "sub": "google-123",
@@ -42,7 +45,10 @@ def test_google_login_success(mock_verify, user_role):
 
 @patch("google.oauth2.id_token.verify_oauth2_token")
 def test_google_login_invalid_domain(mock_verify, db):
+    from app.core.config import settings
+
     mock_verify.return_value = {
+        "aud": settings.GOOGLE_IOS_CLIENT_ID or settings.GOOGLE_CLIENT_ID,
         "email": "hacker@gmail.com",
         "name": "Hacker",
         "sub": "google-bad",
