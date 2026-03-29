@@ -14,20 +14,31 @@ from app.services.auth_service import RoleNotFoundError, verify_and_save_user
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-def _verify_microsoft_token(token: str, client_id: str) -> dict:
-    jwks_uri = "https://login.microsoftonline.com/common/discovery/v2.0/keys"
+def _verify_microsoft_token(token: str, client_id: str, tenant_id: str) -> dict:
+    jwks_uri = f"https://login.microsoftonline.com/{tenant_id}/discovery/v2.0/keys"
     jwks = http_requests.get(jwks_uri, timeout=10).json()
-    return jwt.decode(token, jwks, algorithms=["RS256"], audience=client_id)
+    return jwt.decode(
+        token,
+        jwks,
+        algorithms=["RS256"],
+        audience=client_id,
+        options={"verify_iss": False},
+    )
 
 
 @router.post("/google/mobile-login")
 def google_mobile_login(request_data: TokenRequest, db: Session = Depends(get_db)):
-    client_id = settings.GOOGLE_CLIENT_ID
+    # Acepta tanto el Web client ID como el iOS client ID como audiencia válida
+    valid_client_ids = [
+        cid for cid in [settings.GOOGLE_CLIENT_ID, settings.GOOGLE_IOS_CLIENT_ID] if cid
+    ]
 
     try:
         idinfo = id_token.verify_oauth2_token(
-            request_data.token, google_requests.Request(), client_id
+            request_data.token, google_requests.Request(), None
         )
+        if valid_client_ids and idinfo.get("aud") not in valid_client_ids:
+            raise ValueError("Token audience no válida")
 
         email = idinfo.get("email")
         if not email or not email.endswith("@itmexicali.edu.mx"):
@@ -47,7 +58,7 @@ def google_mobile_login(request_data: TokenRequest, db: Session = Depends(get_db
             email=email,
             name=idinfo.get("name", "Estudiante ITM"),
             oauth_provider="google",
-            oauth_sub=idinfo.get("sub"),
+            oauth_sub=idinfo.get("sub") or "",
         )
     except RoleNotFoundError as err:
         raise HTTPException(status_code=500, detail=str(err)) from err
@@ -64,9 +75,13 @@ def google_mobile_login(request_data: TokenRequest, db: Session = Depends(get_db
 def microsoft_mobile_login(request_data: TokenRequest, db: Session = Depends(get_db)):
     try:
         claims = _verify_microsoft_token(
-            request_data.token, settings.MICROSOFT_CLIENT_ID
+            request_data.token,
+            settings.MICROSOFT_CLIENT_ID,
+            settings.MICROSOFT_TENANT_ID,
         )
-        email = claims.get("email")
+        email = (
+            claims.get("preferred_username") or claims.get("email") or claims.get("upn")
+        )
         if not email or not email.endswith("@mexicali.tecnm.mx"):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -86,7 +101,7 @@ def microsoft_mobile_login(request_data: TokenRequest, db: Session = Depends(get
             email=email,
             name=claims.get("name", "Estudiante TecNM"),
             oauth_provider="microsoft",
-            oauth_sub=claims.get("sub"),
+            oauth_sub=claims.get("sub") or "",
         )
     except RoleNotFoundError as err:
         raise HTTPException(status_code=500, detail=str(err)) from err
