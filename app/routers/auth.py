@@ -37,7 +37,7 @@ def google_mobile_login(request_data: TokenRequest, db: Session = Depends(get_db
         idinfo = id_token.verify_oauth2_token(
             request_data.token, google_requests.Request(), None
         )
-        if idinfo.get("aud") not in valid_client_ids:
+        if valid_client_ids and idinfo.get("aud") not in valid_client_ids:
             raise ValueError("Token audience no válida")
 
         email = idinfo.get("email")
