@@ -80,7 +80,17 @@ def test_google_login_expired_token(mock_verify, db):
 
 
 @patch("google.oauth2.id_token.verify_oauth2_token")
-def test_google_login_invalid_audience(mock_verify, db):
+def test_google_login_invalid_audience(mock_verify, db, monkeypatch):
+    from app.core.config import settings
+
+    # Ensure we have client IDs configured for the test
+    monkeypatch.setattr(
+        settings, "GOOGLE_CLIENT_ID", "valid-client-id.apps.googleusercontent.com"
+    )
+    monkeypatch.setattr(
+        settings, "GOOGLE_IOS_CLIENT_ID", "valid-ios-id.apps.googleusercontent.com"
+    )
+
     mock_verify.return_value = {
         "aud": "some-other-client-id.apps.googleusercontent.com",
         "email": "test@itmexicali.edu.mx",
