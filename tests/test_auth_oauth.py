@@ -44,6 +44,21 @@ def test_google_login_success(mock_verify, user_role):
 
 
 @patch("google.oauth2.id_token.verify_oauth2_token")
+def test_google_login_success_android_audience(mock_verify, user_role):
+    from app.core.config import settings
+
+    mock_verify.return_value = {
+        "aud": settings.GOOGLE_ANDROID_CLIENT_ID,
+        "email": "android@itmexicali.edu.mx",
+        "name": "Android User",
+        "sub": "google-android-123",
+    }
+    response = client.post("/auth/google/mobile-login", json={"token": "fake-token"})
+    assert response.status_code == 200
+    assert "access_token" in response.json()
+
+
+@patch("google.oauth2.id_token.verify_oauth2_token")
 def test_google_login_invalid_domain(mock_verify, db):
     from app.core.config import settings
 
@@ -60,6 +75,18 @@ def test_google_login_invalid_domain(mock_verify, db):
 @patch("google.oauth2.id_token.verify_oauth2_token")
 def test_google_login_expired_token(mock_verify, db):
     mock_verify.side_effect = ValueError("Token expired")
+    response = client.post("/auth/google/mobile-login", json={"token": "fake-token"})
+    assert response.status_code == 401
+
+
+@patch("google.oauth2.id_token.verify_oauth2_token")
+def test_google_login_invalid_audience(mock_verify, db):
+    mock_verify.return_value = {
+        "aud": "some-other-client-id.apps.googleusercontent.com",
+        "email": "test@itmexicali.edu.mx",
+        "name": "Wrong Audience",
+        "sub": "google-wrong-aud",
+    }
     response = client.post("/auth/google/mobile-login", json={"token": "fake-token"})
     assert response.status_code == 401
 
