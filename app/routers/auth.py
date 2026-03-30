@@ -14,6 +14,14 @@ from app.services.auth_service import RoleNotFoundError, verify_and_save_user
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
+def _normalize_google_client_id(client_id: str) -> str:
+    if client_id.startswith("com.googleusercontent.apps."):
+        suffix = client_id.removeprefix("com.googleusercontent.apps.")
+        return f"{suffix}.apps.googleusercontent.com"
+
+    return client_id
+
+
 def _verify_microsoft_token(token: str, client_id: str, tenant_id: str) -> dict:
     jwks_uri = f"https://login.microsoftonline.com/{tenant_id}/discovery/v2.0/keys"
     jwks = http_requests.get(jwks_uri, timeout=10).json()
@@ -28,29 +36,37 @@ def _verify_microsoft_token(token: str, client_id: str, tenant_id: str) -> dict:
 
 @router.post("/google/mobile-login")
 def google_mobile_login(request_data: TokenRequest, db: Session = Depends(get_db)):
-    # Acepta tanto el Web client ID como el iOS client ID como audiencia válida
+    # Acepta los client IDs configurados para Web, iOS y Android.
     valid_client_ids = [
-        cid for cid in [settings.GOOGLE_CLIENT_ID, settings.GOOGLE_IOS_CLIENT_ID] if cid
+        _normalize_google_client_id(cid)
+        for cid in [
+            settings.GOOGLE_CLIENT_ID,
+            settings.GOOGLE_IOS_CLIENT_ID,
+            settings.GOOGLE_ANDROID_CLIENT_ID,
+        ]
+        if cid
     ]
 
     try:
         idinfo = id_token.verify_oauth2_token(
             request_data.token, google_requests.Request(), None
         )
-        if valid_client_ids and idinfo.get("aud") not in valid_client_ids:
-            raise ValueError("Token audience no válida")
-
-        email = idinfo.get("email")
-        if not email or not email.endswith("@itmexicali.edu.mx"):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=(
-                    "Acceso denegado. Se requiere correo institucional "
-                    "(@itmexicali.edu.mx)"
-                ),
-            )
     except ValueError as err:
         raise HTTPException(status_code=401, detail="Token de Google inválido") from err
+
+    # Validate audience first
+    token_aud = _normalize_google_client_id(idinfo.get("aud") or "")
+    if valid_client_ids and token_aud not in valid_client_ids:
+        raise HTTPException(status_code=401, detail="Token de Google inválido")
+
+    email = idinfo.get("email")
+    if not email or not email.endswith("@itmexicali.edu.mx"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                "Acceso denegado. Se requiere correo institucional (@itmexicali.edu.mx)"
+            ),
+        )
 
     try:
         user = verify_and_save_user(

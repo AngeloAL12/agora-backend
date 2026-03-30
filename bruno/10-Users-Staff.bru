@@ -1,0 +1,36 @@
+meta {
+  name: Users - Staff Access
+  type: http
+  seq: 10
+}
+
+get {
+  url: http://localhost:8000/users/staff
+  body: none
+  auth: bearer
+}
+
+query {
+}
+
+headers {
+  Content-Type: application/json
+  Authorization: Bearer your-staff-access-token-here
+}
+
+auth:bearer {
+  token: your-staff-access-token-here
+}
+
+docs {
+  # Staff Access
+  
+  Endpoint que requiere rol de staff.
+  
+  ## Autenticación
+  - Requiere Bearer token válido con rol STAFF
+  
+  ## Response
+  - message: "staff access"
+  - user: Datos del usuario autenticado
+}

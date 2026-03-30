@@ -1,0 +1,39 @@
+meta {
+  name: Microsoft Mobile Login
+  type: http
+  seq: 6
+}
+
+post {
+  url: http://localhost:8000/auth/microsoft/mobile-login
+  body: json
+  auth: none
+}
+
+query {
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "token": "your-microsoft-token-here"
+  }
+}
+
+docs {
+  # Microsoft Mobile Login
+  
+  Autentica un usuario mediante Microsoft OAuth token.
+  
+  ## Requisitos
+  - El email debe terminar con @mexicali.tecnm.mx
+  - Token válido de Microsoft
+  
+  ## Response
+  - access_token: JWT token para autenticación
+  - token_type: "bearer"
+  - user: Datos del usuario (id, email, name)
+}

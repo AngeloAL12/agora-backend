@@ -1,0 +1,44 @@
+meta {
+  name: Save Push Token
+  type: http
+  seq: 11
+}
+
+post {
+  url: http://localhost:8000/push-token
+  body: json
+  auth: bearer
+}
+
+query {
+}
+
+headers {
+  Content-Type: application/json
+  Authorization: Bearer your-access-token-here
+}
+
+auth:bearer {
+  token: your-access-token-here
+}
+
+body:json {
+  {
+    "push_token": "your-push-notification-token-here"
+  }
+}
+
+docs {
+  # Save Push Token
+  
+  Guarda o actualiza el token de push notification del usuario autenticado.
+  
+  ## Autenticación
+  - Requiere Bearer token válido
+  
+  ## Request Body
+  - push_token: string (requerido, mínimo 1 carácter) - Token de push notification
+  
+  ## Response
+  - message: "Push token guardado correctamente"
+}

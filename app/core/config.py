@@ -9,6 +9,7 @@ class Settings(BaseSettings):
 
     GOOGLE_CLIENT_ID: str = ""
     GOOGLE_IOS_CLIENT_ID: str = ""
+    GOOGLE_ANDROID_CLIENT_ID: str = ""
     MICROSOFT_CLIENT_ID: str = ""
     MICROSOFT_TENANT_ID: str = ""
 
