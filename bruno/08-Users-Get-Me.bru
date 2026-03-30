@@ -1,0 +1,36 @@
+meta {
+  name: Users - Get Profile
+  type: http
+  seq: 8
+}
+
+get {
+  url: http://localhost:8000/users/me
+  body: none
+  auth: bearer
+}
+
+query {
+}
+
+headers {
+  Content-Type: application/json
+  Authorization: Bearer your-access-token-here
+}
+
+auth:bearer {
+  token: your-access-token-here
+}
+
+docs {
+  # Get User Profile
+  
+  Devuelve el perfil del usuario actual autenticado.
+  
+  ## Autenticación
+  - Requiere Bearer token válido
+  
+  ## Response
+  - id: ID del usuario
+  - role: Rol del usuario
+}

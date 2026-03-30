@@ -51,20 +51,22 @@ def google_mobile_login(request_data: TokenRequest, db: Session = Depends(get_db
         idinfo = id_token.verify_oauth2_token(
             request_data.token, google_requests.Request(), None
         )
-        if valid_client_ids and idinfo.get("aud") not in valid_client_ids:
-            raise ValueError("Token audience no válida")
-
-        email = idinfo.get("email")
-        if not email or not email.endswith("@itmexicali.edu.mx"):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=(
-                    "Acceso denegado. Se requiere correo institucional "
-                    "(@itmexicali.edu.mx)"
-                ),
-            )
     except ValueError as err:
         raise HTTPException(status_code=401, detail="Token de Google inválido") from err
+
+    # Validate audience first
+    token_aud = _normalize_google_client_id(idinfo.get("aud") or "")
+    if valid_client_ids and token_aud not in valid_client_ids:
+        raise HTTPException(status_code=401, detail="Token de Google inválido")
+
+    email = idinfo.get("email")
+    if not email or not email.endswith("@itmexicali.edu.mx"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                "Acceso denegado. Se requiere correo institucional (@itmexicali.edu.mx)"
+            ),
+        )
 
     try:
         user = verify_and_save_user(

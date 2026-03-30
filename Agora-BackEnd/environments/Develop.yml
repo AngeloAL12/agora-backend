@@ -1,0 +1,4 @@
+name: Develop
+variables:
+  - name: base_url
+    value: https://develop.angelolo.lat
