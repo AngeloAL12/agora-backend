@@ -8,8 +8,8 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.security import create_access_token, get_current_user
-from app.schemas.auth import CurrentUser, TokenRequest
-from app.services.auth_service import RoleNotFoundError, verify_and_save_user
+from app.schemas.auth.auth import CurrentUser, TokenRequest
+from app.services.auth.auth_service import RoleNotFoundError, verify_and_save_user
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 

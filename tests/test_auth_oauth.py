@@ -104,7 +104,7 @@ def test_google_login_invalid_audience(mock_verify, db, monkeypatch):
 # --- TESTS DE MICROSOFT ---
 
 
-@patch("app.routers.auth._verify_microsoft_token")
+@patch("app.routers.auth.auth._verify_microsoft_token")
 def test_microsoft_login_success(mock_verify, user_role):
     mock_verify.return_value = {
         "email": "test@mexicali.tecnm.mx",
@@ -116,7 +116,7 @@ def test_microsoft_login_success(mock_verify, user_role):
     assert "access_token" in response.json()
 
 
-@patch("app.routers.auth._verify_microsoft_token")
+@patch("app.routers.auth.auth._verify_microsoft_token")
 def test_microsoft_login_invalid_domain(mock_verify, db):
     mock_verify.return_value = {
         "email": "hacker@hotmail.com",
@@ -127,7 +127,7 @@ def test_microsoft_login_invalid_domain(mock_verify, db):
     assert response.status_code == 403
 
 
-@patch("app.routers.auth._verify_microsoft_token")
+@patch("app.routers.auth.auth._verify_microsoft_token")
 def test_microsoft_login_invalid_token(mock_verify, db):
     mock_verify.side_effect = JWTError("Invalid token format")
     response = client.post("/auth/microsoft/mobile-login", json={"token": "fake-token"})

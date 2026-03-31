@@ -11,7 +11,7 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.core.roles import RoleName
 from app.models.auth.user import User
-from app.schemas.auth import CurrentUser
+from app.schemas.auth.auth import CurrentUser
 
 SECRET_KEY = settings.SECRET_KEY
 ALGORITHM = settings.ALGORITHM

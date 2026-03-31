@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 
 from app.core.security import get_current_user, require_admin, require_staff
-from app.schemas.auth import CurrentUser
+from app.schemas.auth.auth import CurrentUser
 
 router = APIRouter(prefix="/users", tags=["users"])
 
