@@ -16,6 +16,9 @@ if TYPE_CHECKING:
     from app.models.auth.role import Role
     from app.models.auth.user_session import UserSession
     from app.models.career import Career
+    from app.models.complaint.complaint import Complaint
+    from app.models.complaint.complaint_evidence import ComplaintEvidence
+    from app.models.complaint.complaint_status_history import ComplaintStatusHistory
 
 
 class User(Base):
@@ -52,3 +55,10 @@ class User(Base):
     role: Mapped["Role"] = relationship(back_populates="users")
     career: Mapped["Career | None"] = relationship(back_populates="users")
     sessions: Mapped[list["UserSession"]] = relationship(back_populates="user")
+    complaints: Mapped[list["Complaint"]] = relationship(back_populates="user")
+    complaint_evidences: Mapped[list["ComplaintEvidence"]] = relationship(
+        back_populates="user"
+    )
+    complaint_status_histories: Mapped[list["ComplaintStatusHistory"]] = relationship(
+        back_populates="user"
+    )
