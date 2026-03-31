@@ -16,6 +16,8 @@ if TYPE_CHECKING:
     from app.models.auth.role import Role
     from app.models.auth.user_session import UserSession
     from app.models.career import Career
+    from app.models.club.club import Club
+    from app.models.club.club_member import ClubMember
     from app.models.complaint.complaint import Complaint
     from app.models.complaint.complaint_evidence import ComplaintEvidence
     from app.models.complaint.complaint_status_history import ComplaintStatusHistory
@@ -62,3 +64,5 @@ class User(Base):
     complaint_status_histories: Mapped[list["ComplaintStatusHistory"]] = relationship(
         back_populates="user"
     )
+    clubs_led: Mapped[list["Club"]] = relationship(back_populates="leader")
+    club_memberships: Mapped[list["ClubMember"]] = relationship(back_populates="user")
