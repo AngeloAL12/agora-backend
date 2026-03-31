@@ -24,6 +24,11 @@ jobs:
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/agora_test
       SECRET_KEY: test
+      R2_ACCOUNT_ID: test-account-id
+      R2_ACCESS_KEY_ID: test-key-id
+      R2_SECRET_ACCESS_KEY: test-secret
+      R2_BUCKET_PRIVATE: test-private
+      R2_BUCKET_PUBLIC: test-public
 
     steps:
       - uses: actions/checkout@v4
