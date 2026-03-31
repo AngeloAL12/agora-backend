@@ -3,7 +3,7 @@ from fastapi.testclient import TestClient
 from app.core.roles import RoleName
 from app.core.security import get_current_user, require_admin, require_staff
 from app.main import app
-from app.schemas.auth import CurrentUser
+from app.schemas.auth.auth import CurrentUser
 
 
 def test_me_returns_current_user(clear_dependency_overrides):

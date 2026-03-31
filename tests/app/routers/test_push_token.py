@@ -6,7 +6,7 @@ from app.core.security import get_current_user
 from app.main import app
 from app.models.auth.role import Role
 from app.models.auth.user import User
-from app.schemas.auth import CurrentUser
+from app.schemas.auth.auth import CurrentUser
 
 client = TestClient(app)
 

@@ -4,8 +4,8 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.auth.user_session import UserSession
-from app.schemas.auth import CurrentUser
-from app.schemas.push_token import PushTokenRequest
+from app.schemas.auth.auth import CurrentUser
+from app.schemas.auth.push_token import PushTokenRequest
 
 router = APIRouter()
 

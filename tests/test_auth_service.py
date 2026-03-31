@@ -2,7 +2,7 @@ import pytest
 from sqlalchemy import select
 
 from app.models.auth.user import User
-from app.services.auth_service import RoleNotFoundError, verify_and_save_user
+from app.services.auth.auth_service import RoleNotFoundError, verify_and_save_user
 
 
 def test_verify_and_save_user_new(db, user_role):
