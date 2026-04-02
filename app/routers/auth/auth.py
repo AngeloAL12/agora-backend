@@ -83,7 +83,12 @@ def google_mobile_login(request_data: TokenRequest, db: Session = Depends(get_db
     return {
         "access_token": access_token,
         "token_type": "bearer",
-        "user": {"id": user.id, "email": user.email, "name": user.name},
+        "user": {
+            "id": user.id,
+            "email": user.email,
+            "name": user.name,
+            "id_career": user.id_career,
+        },
     }
 
 
@@ -126,7 +131,12 @@ def microsoft_mobile_login(request_data: TokenRequest, db: Session = Depends(get
     return {
         "access_token": access_token,
         "token_type": "bearer",
-        "user": {"id": user.id, "email": user.email, "name": user.name},
+        "user": {
+            "id": user.id,
+            "email": user.email,
+            "name": user.name,
+            "id_career": user.id_career,
+        },
     }
 
 
