@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 
 from app.routers.auth import auth_router, push_token_router, users_router
+from app.routers.clubs import router as clubs_router
 from app.routers.health import router as health_router
 
 app = FastAPI()
@@ -9,6 +10,7 @@ app.include_router(auth_router)
 app.include_router(health_router)
 app.include_router(users_router)
 app.include_router(push_token_router)
+app.include_router(clubs_router)
 
 
 @app.get("/")
