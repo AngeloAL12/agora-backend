@@ -17,14 +17,6 @@ class ClubUpdate(BaseModel):
     image: str | None = Field(default=None, max_length=500)
 
 
-class ClubMembershipRequest(BaseModel):
-    club_id: int
-
-
-class RemoveMemberRequest(BaseModel):
-    club_id: int
-
-
 class TransferLeadershipRequest(BaseModel):
     new_leader_id: int
 

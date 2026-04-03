@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -11,22 +11,24 @@ from app.schemas.auth.auth import CurrentUser
 from app.schemas.club.club import (
     ClubCreate,
     ClubDetailResponse,
-    ClubMembershipRequest,
     ClubResponse,
     ClubUpdate,
-    RemoveMemberRequest,
     TransferLeadershipRequest,
 )
 
-router = APIRouter(prefix="", tags=["clubs"])
+router = APIRouter(prefix="/clubs", tags=["clubs"])
 
 
-@router.get("/clubs", response_model=list[ClubResponse])
-def get_clubs(db: Session = Depends(get_db)):
-    return db.query(Club).all()
+@router.get("", response_model=list[ClubResponse])
+def get_clubs(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
+    db: Session = Depends(get_db),
+):
+    return db.query(Club).offset(skip).limit(limit).all()
 
 
-@router.get("/clubs/{club_id}", response_model=ClubDetailResponse)
+@router.get("/{club_id}", response_model=ClubDetailResponse)
 def get_club(club_id: int, db: Session = Depends(get_db)):
     club = db.query(Club).filter(Club.id == club_id).first()
 
@@ -35,28 +37,24 @@ def get_club(club_id: int, db: Session = Depends(get_db)):
 
     members_count = db.query(ClubMember).filter(ClubMember.id_club == club_id).count()
 
-    return ClubDetailResponse(
-        **club.__dict__,
-        members_count=members_count,
+    return ClubDetailResponse.model_validate(
+        {**club.__dict__, "members_count": members_count}
     )
 
 
-@router.post("/clubs", response_model=ClubResponse)
+@router.post("", response_model=ClubResponse)
 def create_club(
     payload: ClubCreate,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_current_user),
 ):
-    # ✅ validar nombre único
     existing = db.query(Club).filter(Club.name == payload.name).first()
     if existing:
         raise HTTPException(400, "Nombre de club ya existe")
 
-    # ✅ validar categoría existente
     category = (
         db.query(ClubCategory).filter(ClubCategory.id == payload.id_category).first()
     )
-
     if not category:
         raise HTTPException(400, "Categoría inválida")
 
@@ -85,12 +83,10 @@ def create_club(
 
     except IntegrityError as err:
         db.rollback()
-        raise HTTPException(
-            status_code=400, detail=f"Error de integridad: {err.orig}"
-        ) from err
+        raise HTTPException(status_code=400, detail="Error al crear el club") from err
 
 
-@router.patch("/clubs/{club_id}", response_model=ClubResponse)
+@router.patch("/{club_id}", response_model=ClubResponse)
 def update_club(
     club_id: int,
     payload: ClubUpdate,
@@ -105,7 +101,6 @@ def update_club(
     if club.id_leader != current_user.id:
         raise HTTPException(403, "Solo el líder puede editar")
 
-    # ✅ validar nombre único si se cambia
     if payload.name:
         existing = db.query(Club).filter(Club.name == payload.name).first()
         if existing and existing.id != club.id:
@@ -118,7 +113,7 @@ def update_club(
     if payload.image is not None:
         club.image = payload.image
 
-    if payload.id_category:
+    if payload.id_category is not None:
         category = (
             db.query(ClubCategory)
             .filter(ClubCategory.id == payload.id_category)
@@ -135,7 +130,7 @@ def update_club(
     return club
 
 
-@router.delete("/clubs/{club_id}")
+@router.delete("/{club_id}")
 def delete_club(
     club_id: int,
     db: Session = Depends(get_db),
@@ -156,13 +151,13 @@ def delete_club(
     return {"message": "Club eliminado"}
 
 
-@router.post("/join")
+@router.post("/{club_id}/members")
 def join_club(
-    payload: ClubMembershipRequest,
+    club_id: int,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_current_user),
 ):
-    club = db.query(Club).filter(Club.id == payload.club_id).first()
+    club = db.query(Club).filter(Club.id == club_id).first()
 
     if not club:
         raise HTTPException(404, "Club no encontrado")
@@ -170,7 +165,7 @@ def join_club(
     exists = (
         db.query(ClubMember)
         .filter(
-            ClubMember.id_club == payload.club_id,
+            ClubMember.id_club == club_id,
             ClubMember.id_user == current_user.id,
         )
         .first()
@@ -181,7 +176,7 @@ def join_club(
 
     db.add(
         ClubMember(
-            id_club=payload.club_id,
+            id_club=club_id,
             id_user=current_user.id,
         )
     )
@@ -190,13 +185,13 @@ def join_club(
     return {"message": "Te uniste al club"}
 
 
-@router.delete("/members/me")
+@router.delete("/{club_id}/members/me")
 def leave_club(
-    payload: ClubMembershipRequest,
+    club_id: int,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_current_user),
 ):
-    club = db.query(Club).filter(Club.id == payload.club_id).first()
+    club = db.query(Club).filter(Club.id == club_id).first()
 
     if not club:
         raise HTTPException(404, "Club no encontrado")
@@ -207,7 +202,7 @@ def leave_club(
     member = (
         db.query(ClubMember)
         .filter(
-            ClubMember.id_club == payload.club_id,
+            ClubMember.id_club == club_id,
             ClubMember.id_user == current_user.id,
         )
         .first()
@@ -222,14 +217,14 @@ def leave_club(
     return {"message": "Saliste del club"}
 
 
-@router.delete("/members/{user_id}")
+@router.delete("/{club_id}/members/{user_id}")
 def remove_member(
+    club_id: int,
     user_id: int,
-    payload: RemoveMemberRequest,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_current_user),
 ):
-    club = db.query(Club).filter(Club.id == payload.club_id).first()
+    club = db.query(Club).filter(Club.id == club_id).first()
 
     if not club:
         raise HTTPException(404, "Club no encontrado")
@@ -237,10 +232,13 @@ def remove_member(
     if club.id_leader != current_user.id:
         raise HTTPException(403, "Solo el líder puede expulsar")
 
+    if user_id == club.id_leader:
+        raise HTTPException(400, "No puedes expulsar al líder")
+
     member = (
         db.query(ClubMember)
         .filter(
-            ClubMember.id_club == payload.club_id,
+            ClubMember.id_club == club_id,
             ClubMember.id_user == user_id,
         )
         .first()
@@ -255,7 +253,7 @@ def remove_member(
     return {"message": "Miembro expulsado"}
 
 
-@router.post("/clubs/{club_id}/transfer-leadership")
+@router.post("/{club_id}/transfer-leadership")
 def transfer_leadership(
     club_id: int,
     payload: TransferLeadershipRequest,

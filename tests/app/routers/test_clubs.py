@@ -272,7 +272,7 @@ def test_join_club(db, clear_dependency_overrides):
     club = create_club(db, category.id)
 
     client = TestClient(app)
-    response = client.post("/join", json={"club_id": club.id})
+    response = client.post(f"/clubs/{club.id}/members")
 
     assert response.status_code == 200
     assert response.json()["message"] == "Te uniste al club"
@@ -282,7 +282,7 @@ def test_join_club_not_found(db, clear_dependency_overrides):
     app.dependency_overrides[get_current_user] = override_user(2)
 
     client = TestClient(app)
-    response = client.post("/join", json={"club_id": 999})
+    response = client.post("/clubs/999/members")
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Club no encontrado"
@@ -298,7 +298,7 @@ def test_join_club_already_member(db, clear_dependency_overrides):
     db.commit()
 
     client = TestClient(app)
-    response = client.post("/join", json={"club_id": club.id})
+    response = client.post(f"/clubs/{club.id}/members")
 
     assert response.status_code == 400
     assert response.json()["detail"] == "Ya eres miembro"
@@ -311,13 +311,9 @@ def test_leave_club(db, clear_dependency_overrides):
     club = create_club(db, category.id)
 
     client = TestClient(app)
-    client.post("/join", json={"club_id": club.id})
+    client.post(f"/clubs/{club.id}/members")
 
-    response = client.request(
-        "DELETE",
-        "/members/me",
-        json={"club_id": club.id},
-    )
+    response = client.delete(f"/clubs/{club.id}/members/me")
 
     assert response.status_code == 200
     assert response.json()["message"] == "Saliste del club"
@@ -327,11 +323,7 @@ def test_leave_club_not_found(db, clear_dependency_overrides):
     app.dependency_overrides[get_current_user] = override_user(2)
 
     client = TestClient(app)
-    response = client.request(
-        "DELETE",
-        "/members/me",
-        json={"club_id": 999},
-    )
+    response = client.delete("/clubs/999/members/me")
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Club no encontrado"
@@ -344,11 +336,7 @@ def test_leave_club_not_member(db, clear_dependency_overrides):
     club = create_club(db, category.id)
 
     client = TestClient(app)
-    response = client.request(
-        "DELETE",
-        "/members/me",
-        json={"club_id": club.id},
-    )
+    response = client.delete(f"/clubs/{club.id}/members/me")
 
     assert response.status_code == 404
     assert response.json()["detail"] == "No eres miembro"
@@ -361,11 +349,7 @@ def test_leave_club_leader_cannot_leave(db, clear_dependency_overrides):
     club = create_club(db, category.id, leader_id=1)
 
     client = TestClient(app)
-    response = client.request(
-        "DELETE",
-        "/members/me",
-        json={"club_id": club.id},
-    )
+    response = client.delete(f"/clubs/{club.id}/members/me")
 
     assert response.status_code == 400
     assert response.json()["detail"] == "El líder no puede salirse"
@@ -381,11 +365,7 @@ def test_remove_member_only_leader(db, clear_dependency_overrides):
     db.commit()
 
     client = TestClient(app)
-    response = client.request(
-        "DELETE",
-        "/members/3",
-        json={"club_id": club.id},
-    )
+    response = client.delete(f"/clubs/{club.id}/members/3")
 
     assert response.status_code == 403
     assert response.json()["detail"] == "Solo el líder puede expulsar"
@@ -395,11 +375,7 @@ def test_remove_member_club_not_found(db, clear_dependency_overrides):
     app.dependency_overrides[get_current_user] = override_user(1)
 
     client = TestClient(app)
-    response = client.request(
-        "DELETE",
-        "/members/2",
-        json={"club_id": 999},
-    )
+    response = client.delete("/clubs/999/members/2")
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Club no encontrado"
@@ -412,11 +388,7 @@ def test_remove_member_not_member(db, clear_dependency_overrides):
     club = create_club(db, category.id, leader_id=1)
 
     client = TestClient(app)
-    response = client.request(
-        "DELETE",
-        "/members/999",
-        json={"club_id": club.id},
-    )
+    response = client.delete(f"/clubs/{club.id}/members/999")
 
     assert response.status_code == 404
     assert response.json()["detail"] == "No es miembro"
@@ -432,11 +404,7 @@ def test_remove_member_success(db, clear_dependency_overrides):
     db.commit()
 
     client = TestClient(app)
-    response = client.request(
-        "DELETE",
-        "/members/2",
-        json={"club_id": club.id},
-    )
+    response = client.delete(f"/clubs/{club.id}/members/2")
 
     assert response.status_code == 200
     assert response.json()["message"] == "Miembro expulsado"
@@ -451,7 +419,7 @@ def test_transfer_leadership(db, clear_dependency_overrides):
     client = TestClient(app)
 
     app.dependency_overrides[get_current_user] = override_user(2)
-    client.post("/join", json={"club_id": club.id})
+    client.post(f"/clubs/{club.id}/members")
 
     app.dependency_overrides[get_current_user] = override_user(1)
     response = client.post(
