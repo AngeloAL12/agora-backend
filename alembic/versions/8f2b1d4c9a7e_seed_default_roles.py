@@ -28,8 +28,12 @@ def upgrade() -> None:
             sa.text(
                 """
                 INSERT INTO role (name)
-                VALUES (:role_name)
-                ON CONFLICT (name) DO NOTHING
+                SELECT :role_name
+                WHERE NOT EXISTS (
+                    SELECT 1
+                    FROM role
+                    WHERE name = :role_name
+                )
                 """
             ),
             {"role_name": role_name},

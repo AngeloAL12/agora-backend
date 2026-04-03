@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     R2_ACCESS_KEY_ID: str
     R2_SECRET_ACCESS_KEY: str
     R2_ENDPOINT: str = ""
+    ENV: str = "development"
     R2_BUCKET_PRIVATE: str
     R2_BUCKET_PUBLIC: str
 

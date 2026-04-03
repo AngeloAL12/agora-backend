@@ -207,3 +207,13 @@ def test_test_login_token_usable(user_role):
 
     assert response.status_code == 200
     assert response.json()["id"] > 0
+
+
+def test_test_login_forbidden_in_production(monkeypatch):
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "ENV", "production")
+
+    response = client.post("/auth/test-login")
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Solo disponible en desarrollo"

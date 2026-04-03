@@ -138,6 +138,12 @@ def test_login(db: Session = Depends(get_db)):
 
     Solo disponible en ambiente de desarrollo.
     """
+    if settings.ENV != "development":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Solo disponible en desarrollo",
+        )
+
     email = "test@itmexicali.edu.mx"
     try:
         user = verify_and_save_user(

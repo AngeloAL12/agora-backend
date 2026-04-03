@@ -62,7 +62,7 @@ def test_create_complaint_with_image(db, clear_dependency_overrides, monkeypatch
 
     client = TestClient(app)
     response = client.post(
-        "/complaints/with-images",
+        "/complaints",
         data={
             "title": "Beca",
             "description": "No se reflejo el pago",
@@ -188,23 +188,23 @@ def test_get_my_complaint_detail_forbidden_for_other_user(
     assert response.json()["detail"] == "No tienes acceso a esta queja"
 
 
-def test_create_complaint_json_endpoint(db, clear_dependency_overrides):
-    """Test creating complaint via JSON endpoint"""
+def test_create_complaint_no_images(db, clear_dependency_overrides):
+    """Test creating complaint without images via multipart endpoint"""
     user = _create_user(db, RoleName.USER, "student11@itmexicali.edu.mx", "sub-11")
     _override_current_user(user.id)
 
     client = TestClient(app)
     response = client.post(
         "/complaints",
-        json={
-            "title": "JSON Complaint",
-            "description": "Created via JSON endpoint",
+        data={
+            "title": "Sin Imágenes",
+            "description": "Creada sin imágenes",
             "category": "SECURITY",
         },
     )
 
     assert response.status_code == 201
-    assert response.json()["title"] == "JSON Complaint"
+    assert response.json()["title"] == "Sin Imágenes"
     assert response.json()["category"] == "SECURITY"
     assert response.json()["status"] == ComplaintStatus.PENDING
     assert len(response.json()["images"]) == 0
@@ -219,7 +219,7 @@ def test_create_complaint_with_too_many_images(
 
     client = TestClient(app)
     response = client.post(
-        "/complaints/with-images",
+        "/complaints",
         data={
             "title": "Too Many Images",
             "description": "This complaint has 4 images",

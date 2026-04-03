@@ -10,7 +10,6 @@ from app.models.complaint.complaint_image import ComplaintImage
 from app.models.complaint.complaint_status_history import ComplaintStatusHistory
 from app.schemas.auth.auth import CurrentUser
 from app.schemas.complaint import (
-    ComplaintCreateRequest,
     ComplaintListItemResponse,
     ComplaintResponse,
 )
@@ -46,11 +45,11 @@ async def _serialize_complaint(complaint: Complaint) -> ComplaintResponse:
 
 
 @router.post(
-    "/with-images",
+    "",
     response_model=ComplaintResponse,
     status_code=status.HTTP_201_CREATED,
 )
-async def create_complaint_with_images(
+async def create_complaint(
     title: str = Form(...),
     description: str = Form(...),
     category: ComplaintCategory = Form(...),
@@ -59,7 +58,8 @@ async def create_complaint_with_images(
     db: Session = Depends(get_db),
 ):
     """
-    Crea una nueva queja con imágenes (multipart/form-data).
+    Crea una nueva queja con datos multipart/form-data.
+    El campo images es opcional (0..3 archivos).
     """
     if images and len(images) > 3:
         raise HTTPException(
@@ -105,59 +105,20 @@ async def create_complaint_with_images(
     return await _serialize_complaint(complaint)
 
 
-@router.post(
-    "",
-    response_model=ComplaintResponse,
-    status_code=status.HTTP_201_CREATED,
-)
-async def create_complaint(
-    request: ComplaintCreateRequest,
-    current_user: CurrentUser = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    """
-    Crea una nueva queja con JSON (sin imágenes).
-    Para enviar imágenes, usa POST /complaints/with-images con multipart/form-data.
-    """
-    complaint = Complaint(
-        id_user=current_user.id,
-        title=request.title.strip(),
-        description=request.description.strip(),
-        category=request.category,
-        status=ComplaintStatus.PENDING,
-    )
-    db.add(complaint)
-    db.flush()
-
-    db.add(
-        ComplaintStatusHistory(
-            id_complaint=complaint.id,
-            id_user=current_user.id,
-            old_status=None,
-            new_status=ComplaintStatus.PENDING,
-        )
-    )
-    db.commit()
-
-    complaint = db.execute(
-        select(Complaint)
-        .options(selectinload(Complaint.images))
-        .where(Complaint.id == complaint.id)
-    ).scalar_one()
-
-    return await _serialize_complaint(complaint)
-
-
 @router.get("/me", response_model=list[ComplaintListItemResponse])
 async def get_my_complaints(
     current_user: CurrentUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    complaints = db.execute(
-        select(Complaint)
-        .where(Complaint.id_user == current_user.id)
-        .order_by(Complaint.created_at.desc(), Complaint.id.desc())
-    ).scalars()
+    complaints = (
+        db.execute(
+            select(Complaint)
+            .where(Complaint.id_user == current_user.id)
+            .order_by(Complaint.created_at.desc(), Complaint.id.desc())
+        )
+        .scalars()
+        .all()
+    )
 
     return [
         ComplaintListItemResponse(
