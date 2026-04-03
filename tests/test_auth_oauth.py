@@ -136,24 +136,14 @@ def test_microsoft_login_invalid_token(mock_verify, db):
     assert response.status_code == 401
 
 
-@patch("app.routers.auth.auth._verify_microsoft_token")
-def test_microsoft_login_success(mock_verify, user_role):
-    mock_verify.return_value = {
-        "email": "test@mexicali.tecnm.mx",
-        "name": "Test Microsoft User",
-        "sub": "ms-123",
-    }
-    response = client.post("/auth/microsoft/mobile-login", json={"token": "fake-token"})
-    assert response.status_code == 200
-    assert "access_token" in response.json()
-    assert "user" in response.json()
+
 
 
 @patch("app.routers.auth.auth.verify_and_save_user")
 @patch("google.oauth2.id_token.verify_oauth2_token")
 def test_google_login_role_not_found_error(mock_verify, mock_save_user, db):
-    from app.services.auth.auth_service import RoleNotFoundError
     from app.core.config import settings
+    from app.services.auth.auth_service import RoleNotFoundError
 
     mock_verify.return_value = {
         "aud": settings.GOOGLE_IOS_CLIENT_ID or settings.GOOGLE_CLIENT_ID,

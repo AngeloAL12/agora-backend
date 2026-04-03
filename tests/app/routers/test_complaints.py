@@ -63,7 +63,11 @@ def test_create_complaint_with_image(db, clear_dependency_overrides, monkeypatch
     client = TestClient(app)
     response = client.post(
         "/complaints/with-images",
-        data={"title": "Beca", "description": "No se reflejo el pago", "category": "ACADEMIC"},
+        data={
+            "title": "Beca",
+            "description": "No se reflejo el pago",
+            "category": "ACADEMIC",
+        },
         files=[("images", ("evidence.png", b"image-bytes", "image/png"))],
     )
 
@@ -206,7 +210,9 @@ def test_create_complaint_json_endpoint(db, clear_dependency_overrides):
     assert len(response.json()["images"]) == 0
 
 
-def test_create_complaint_with_too_many_images(db, clear_dependency_overrides, monkeypatch):
+def test_create_complaint_with_too_many_images(
+    db, clear_dependency_overrides, monkeypatch
+):
     """Test that more than 3 images is rejected"""
     user = _create_user(db, RoleName.USER, "student12@itmexicali.edu.mx", "sub-12")
     _override_current_user(user.id)

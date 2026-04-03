@@ -9,7 +9,11 @@ from app.models.complaint.complaint import Complaint, ComplaintCategory, Complai
 from app.models.complaint.complaint_image import ComplaintImage
 from app.models.complaint.complaint_status_history import ComplaintStatusHistory
 from app.schemas.auth.auth import CurrentUser
-from app.schemas.complaint import ComplaintCreateRequest, ComplaintListItemResponse, ComplaintResponse
+from app.schemas.complaint import (
+    ComplaintCreateRequest,
+    ComplaintListItemResponse,
+    ComplaintResponse,
+)
 from app.services.storage_service import storage_service
 
 router = APIRouter(prefix="/complaints", tags=["complaints"])
@@ -41,7 +45,11 @@ async def _serialize_complaint(complaint: Complaint) -> ComplaintResponse:
     )
 
 
-@router.post("/with-images", response_model=ComplaintResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/with-images",
+    response_model=ComplaintResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 async def create_complaint_with_images(
     title: str = Form(...),
     description: str = Form(...),
