@@ -1,6 +1,9 @@
-from pydantic import BaseModel
 from datetime import datetime
+
+from pydantic import BaseModel
+
 from app.models.complaint import ComplaintStatus
+
 
 class ComplaintOut(BaseModel):
     id: int
@@ -13,6 +16,7 @@ class ComplaintOut(BaseModel):
 
     class Config:
         from_attributes = True
+
 
 class ComplaintStatusUpdate(BaseModel):
     status: ComplaintStatus
