@@ -58,12 +58,13 @@ def test_google_login_success_android_audience(mock_verify, user_role, monkeypat
         "name": "Android User",
         "sub": "google-android-123",
     }
-    
+
     response = client.post("/auth/google/mobile-login", json={"token": "fake-token"})
-    
+
     # 3. Validamos que la respuesta sea exitosa
     assert response.status_code == 200
     assert "access_token" in response.json()
+
 
 @patch("google.oauth2.id_token.verify_oauth2_token")
 def test_google_login_invalid_domain(mock_verify, db):
