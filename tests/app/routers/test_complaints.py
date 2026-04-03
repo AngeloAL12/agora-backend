@@ -199,8 +199,8 @@ def test_create_complaint_json_endpoint(db, clear_dependency_overrides):
         json={
             "title": "JSON Complaint",
             "description": "Created via JSON endpoint",
-            "category": "SECURITY"
-        }
+            "category": "SECURITY",
+        },
     )
 
     assert response.status_code == 201
@@ -223,14 +223,14 @@ def test_create_complaint_with_too_many_images(
         data={
             "title": "Too Many Images",
             "description": "This complaint has 4 images",
-            "category": "ACADEMIC"
+            "category": "ACADEMIC",
         },
         files=[
             ("images", ("img1.png", b"image1", "image/png")),
             ("images", ("img2.png", b"image2", "image/png")),
             ("images", ("img3.png", b"image3", "image/png")),
             ("images", ("img4.png", b"image4", "image/png")),
-        ]
+        ],
     )
 
     assert response.status_code == 400

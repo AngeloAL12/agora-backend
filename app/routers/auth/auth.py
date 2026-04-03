@@ -135,7 +135,7 @@ def test_login(db: Session = Depends(get_db)):
     """
     Endpoint de prueba para desarrollo. Crea/obtiene un usuario de prueba
     y devuelve un access token válido sin requerir OAuth.
-    
+
     Solo disponible en ambiente de desarrollo.
     """
     email = "test@itmexicali.edu.mx"
@@ -149,7 +149,7 @@ def test_login(db: Session = Depends(get_db)):
         )
     except RoleNotFoundError as err:
         raise HTTPException(status_code=500, detail=str(err)) from err
-    
+
     access_token = create_access_token(data={"sub": str(user.id)})
     return {
         "access_token": access_token,

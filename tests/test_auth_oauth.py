@@ -136,9 +136,6 @@ def test_microsoft_login_invalid_token(mock_verify, db):
     assert response.status_code == 401
 
 
-
-
-
 @patch("app.routers.auth.auth.verify_and_save_user")
 @patch("google.oauth2.id_token.verify_oauth2_token")
 def test_google_login_role_not_found_error(mock_verify, mock_save_user, db):
@@ -175,12 +172,12 @@ def test_microsoft_login_role_not_found_error(mock_verify_ms, mock_save_user, db
 
 def test_get_me_success(clear_dependency_overrides):
     from app.core.roles import RoleName
-    
+
     app.dependency_overrides[get_current_user] = lambda: CurrentUser(
         id=1,
         role=RoleName.USER,
     )
-    
+
     response = client.get("/auth/me")
     assert response.status_code == 200
     assert "id" in response.json()
@@ -206,10 +203,7 @@ def test_test_login_token_usable(user_role):
     token = response.json()["access_token"]
 
     # Use the token
-    response = client.get(
-        "/auth/me",
-        headers={"Authorization": f"Bearer {token}"}
-    )
+    response = client.get("/auth/me", headers={"Authorization": f"Bearer {token}"})
 
     assert response.status_code == 200
     assert response.json()["id"] > 0
