@@ -1,0 +1,58 @@
+meta {
+  name: Complaints - Create Complaint With Images
+  type: http
+  seq: 12
+}
+
+post {
+  url: http://localhost:8000/complaints/with-images
+  body: form-data
+  auth: bearer
+}
+
+query {
+}
+
+headers {
+  Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiZXhwIjoxNzc1MTg1NzU0fQ._m2LbKafCBUFMj7KZsCOyNPOZtNkKdXjseapsyW55ko
+}
+
+body:form-data {
+  title: Queja con imágenes
+  description: Esta es una queja de prueba con archivo adjunto
+  category: ACADEMIC
+  images: @imagen.jpg
+}
+
+auth:bearer {
+  token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiZXhwIjoxNzc1MTg1NzU0fQ._m2LbKafCBUFMj7KZsCOyNPOZtNkKdXjseapsyW55ko
+}
+
+docs {
+  # Create Complaint With Images
+  
+  Crea una nueva queja con imágenes adjuntas (multipart/form-data).
+  
+  ## Autenticación
+  - Requiere Bearer token válido
+  
+  ## Campos requeridos
+  - title: Título de la queja
+  - description: Descripción detallada
+  - category: ACADEMIC, SECURITY
+  - images: Hasta 3 archivos de imagen (formato: @/path/to/image.jpg)
+  
+  ## Cómo adjuntar imágenes en Bruno
+  1. En el campo `images` escribe: `@` seguido del path del archivo
+  2. Ejemplo: `@/Users/nombre/Pictures/foto.jpg`
+  3. Para múltiples: En una nueva línea escribe otra imagen
+  
+  ## Response
+  - id: ID de la queja creada
+  - title, description, category, status, created_at
+  - images: Array con URLs presigned de las imágenes subidas
+  
+  ## Límites
+  - Máximo 3 imágenes por queja
+  - El servidor aloja en Cloudflare R2
+}

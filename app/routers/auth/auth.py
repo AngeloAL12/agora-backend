@@ -130,6 +130,34 @@ def microsoft_mobile_login(request_data: TokenRequest, db: Session = Depends(get
     }
 
 
+@router.post("/test-login")
+def test_login(db: Session = Depends(get_db)):
+    """
+    Endpoint de prueba para desarrollo. Crea/obtiene un usuario de prueba
+    y devuelve un access token válido sin requerir OAuth.
+    
+    Solo disponible en ambiente de desarrollo.
+    """
+    email = "test@itmexicali.edu.mx"
+    try:
+        user = verify_and_save_user(
+            db=db,
+            email=email,
+            name="Usuario Prueba",
+            oauth_provider="test",
+            oauth_sub="test-user-123",
+        )
+    except RoleNotFoundError as err:
+        raise HTTPException(status_code=500, detail=str(err)) from err
+    
+    access_token = create_access_token(data={"sub": str(user.id)})
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user": {"id": user.id, "email": user.email, "name": user.name},
+    }
+
+
 @router.get("/me")
 def read_users_me(current_user: CurrentUser = Depends(get_current_user)):
     """

@@ -5,7 +5,10 @@ from app.core.config import settings
 
 
 def get_engine(database_url: str):
-    return create_engine(database_url)
+    return create_engine(
+        database_url,
+        connect_args={"options": "-c client_encoding=UTF8"},
+    )
 
 
 engine = get_engine(settings.DATABASE_URL)

@@ -21,6 +21,11 @@ class ComplaintStatus(StrEnum):
     REJECTED = "REJECTED"
 
 
+class ComplaintCategory(StrEnum):
+    ACADEMIC = "ACADEMIC"
+    SECURITY = "SECURITY"
+
+
 class Complaint(Base):
     __tablename__ = "complaint"
 
@@ -28,6 +33,9 @@ class Complaint(Base):
     id_user: Mapped[int] = mapped_column(ForeignKey("user.id"), nullable=False)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
+    category: Mapped[ComplaintCategory] = mapped_column(
+        SQLAlchemyEnum(ComplaintCategory), nullable=False
+    )
     status: Mapped[ComplaintStatus] = mapped_column(
         SQLAlchemyEnum(ComplaintStatus), default=ComplaintStatus.PENDING, nullable=False
     )

@@ -1,0 +1,41 @@
+meta {
+  name: Complaints - Get My Complaints
+  type: http
+  seq: 13
+}
+
+get {
+  url: http://localhost:8000/complaints/me
+  body: none
+  auth: bearer
+}
+
+query {
+}
+
+headers {
+  Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiZXhwIjoxNzc1MTg1NzU0fQ._m2LbKafCBUFMj7KZsCOyNPOZtNkKdXjseapsyW55ko
+}
+
+auth:bearer {
+  token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiZXhwIjoxNzc1MTg1NzU0fQ._m2LbKafCBUFMj7KZsCOyNPOZtNkKdXjseapsyW55ko
+}
+
+docs {
+  # Get My Complaints
+  
+  Obtiene la lista de quejas del usuario autenticado.
+  
+  ## Autenticación
+  - Requiere Bearer token válido
+  
+  ## Response
+  Array de quejas con:
+  - id: ID de la queja
+  - title: Título
+  - status: Estado (PENDING, IN_REVIEW, RESOLVED, CLOSED)
+  - created_at: Fecha de creación
+  
+  ## Ordenamiento
+  - Ordenadas por fecha de creación descendente
+}
