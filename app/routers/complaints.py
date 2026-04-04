@@ -67,10 +67,24 @@ async def create_complaint(
             detail="Máximo 3 imágenes permitidas",
         )
 
+    title_clean = title.strip()
+    description_clean = description.strip()
+
+    if not title_clean:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El título no puede estar vacío",
+        )
+    if not description_clean:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="La descripción no puede estar vacía",
+        )
+
     complaint = Complaint(
         id_user=current_user.id,
-        title=title.strip(),
-        description=description.strip(),
+        title=title_clean,
+        description=description_clean,
         category=category,
         status=ComplaintStatus.PENDING,
     )

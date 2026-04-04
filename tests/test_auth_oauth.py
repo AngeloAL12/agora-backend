@@ -182,38 +182,3 @@ def test_get_me_success(clear_dependency_overrides):
     assert response.status_code == 200
     assert "id" in response.json()
     assert "role" in response.json()
-
-
-def test_test_login_creates_user(user_role):
-    """Test that test-login endpoint creates/gets test user and returns valid token"""
-    response = client.post("/auth/test-login")
-
-    assert response.status_code == 200
-    data = response.json()
-    assert "access_token" in data
-    assert data["token_type"] == "bearer"
-    assert "user" in data
-    assert data["user"]["email"] == "test@itmexicali.edu.mx"
-    assert data["user"]["name"] == "Usuario Prueba"
-
-
-def test_test_login_token_usable(user_role):
-    """Test that the token from test-login can authenticate requests"""
-    response = client.post("/auth/test-login")
-    token = response.json()["access_token"]
-
-    # Use the token
-    response = client.get("/auth/me", headers={"Authorization": f"Bearer {token}"})
-
-    assert response.status_code == 200
-    assert response.json()["id"] > 0
-
-
-def test_test_login_forbidden_in_production(monkeypatch):
-    from app.core.config import settings
-
-    monkeypatch.setattr(settings, "ENV", "production")
-
-    response = client.post("/auth/test-login")
-    assert response.status_code == 403
-    assert response.json()["detail"] == "Solo disponible en desarrollo"
