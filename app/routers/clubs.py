@@ -13,7 +13,6 @@ from app.schemas.club.club import (
     ClubDetailResponse,
     ClubResponse,
     ClubUpdate,
-    TransferLeadershipRequest,
 )
 
 router = APIRouter(prefix="/clubs", tags=["clubs"])
@@ -101,19 +100,19 @@ def update_club(
     if club.id_leader != current_user.id:
         raise HTTPException(403, "Solo el líder puede editar")
 
-    if payload.name:
+    if "name" in payload.model_fields_set:
         existing = db.query(Club).filter(Club.name == payload.name).first()
         if existing and existing.id != club.id:
             raise HTTPException(400, "Nombre de club ya existe")
         club.name = payload.name
 
-    if payload.description:
+    if "description" in payload.model_fields_set:
         club.description = payload.description
 
-    if payload.image is not None:
+    if "image" in payload.model_fields_set:
         club.image = payload.image
 
-    if payload.id_category is not None:
+    if "id_category" in payload.model_fields_set:
         category = (
             db.query(ClubCategory)
             .filter(ClubCategory.id == payload.id_category)
@@ -253,10 +252,10 @@ def remove_member(
     return {"message": "Miembro expulsado"}
 
 
-@router.post("/{club_id}/transfer-leadership")
+@router.patch("/{club_id}/members/{user_id}/leader")
 def transfer_leadership(
     club_id: int,
-    payload: TransferLeadershipRequest,
+    user_id: int,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_current_user),
 ):
@@ -266,21 +265,25 @@ def transfer_leadership(
         raise HTTPException(404, "Club no encontrado")
 
     if club.id_leader != current_user.id:
-        raise HTTPException(403, "Solo el líder puede transferir")
+        raise HTTPException(403, "Solo el líder actual puede transferir")
+
+    if user_id == club.id_leader:
+        raise HTTPException(409, "El usuario ya es el líder actual")
 
     member = (
         db.query(ClubMember)
         .filter(
             ClubMember.id_club == club_id,
-            ClubMember.id_user == payload.new_leader_id,
+            ClubMember.id_user == user_id,
         )
         .first()
     )
 
     if not member:
-        raise HTTPException(400, "Debe ser miembro")
+        raise HTTPException(400, "El usuario destino debe ser miembro del club")
 
-    club.id_leader = payload.new_leader_id
+    club.id_leader = user_id
     db.commit()
+    db.refresh(club)
 
     return {"message": "Liderazgo transferido"}

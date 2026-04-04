@@ -191,6 +191,29 @@ def test_update_club_success(db, clear_dependency_overrides):
     assert data["id_category"] == category2.id
 
 
+def test_update_club_can_clear_image_with_null(db, clear_dependency_overrides):
+    app.dependency_overrides[get_current_user] = override_user(1)
+
+    category = create_category(db)
+    club = create_club(db, category.id, leader_id=1, name="Club Imagen")
+    club.image = "https://example.com/club.png"
+    db.commit()
+    db.refresh(club)
+
+    client = TestClient(app)
+    response = client.patch(
+        f"/clubs/{club.id}",
+        json={"image": None},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["image"] is None
+
+    db.refresh(club)
+    assert club.image is None
+
+
 def test_update_club_duplicate_name(db, clear_dependency_overrides):
     app.dependency_overrides[get_current_user] = override_user(1)
 
@@ -422,23 +445,20 @@ def test_transfer_leadership(db, clear_dependency_overrides):
     client.post(f"/clubs/{club.id}/members")
 
     app.dependency_overrides[get_current_user] = override_user(1)
-    response = client.post(
-        f"/clubs/{club.id}/transfer-leadership",
-        json={"new_leader_id": 2},
-    )
+    response = client.patch(f"/clubs/{club.id}/members/2/leader")
 
     assert response.status_code == 200
     assert response.json()["message"] == "Liderazgo transferido"
+
+    db.refresh(club)
+    assert club.id_leader == 2
 
 
 def test_transfer_leadership_club_not_found(db, clear_dependency_overrides):
     app.dependency_overrides[get_current_user] = override_user(1)
 
     client = TestClient(app)
-    response = client.post(
-        "/clubs/999/transfer-leadership",
-        json={"new_leader_id": 2},
-    )
+    response = client.patch("/clubs/999/members/2/leader")
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Club no encontrado"
@@ -454,13 +474,10 @@ def test_transfer_leadership_only_leader(db, clear_dependency_overrides):
     db.commit()
 
     client = TestClient(app)
-    response = client.post(
-        f"/clubs/{club.id}/transfer-leadership",
-        json={"new_leader_id": 2},
-    )
+    response = client.patch(f"/clubs/{club.id}/members/2/leader")
 
     assert response.status_code == 403
-    assert response.json()["detail"] == "Solo el líder puede transferir"
+    assert response.json()["detail"] == "Solo el líder actual puede transferir"
 
 
 def test_transfer_leadership_requires_membership(db, clear_dependency_overrides):
@@ -470,10 +487,20 @@ def test_transfer_leadership_requires_membership(db, clear_dependency_overrides)
     club = create_club(db, category.id, leader_id=1)
 
     client = TestClient(app)
-    response = client.post(
-        f"/clubs/{club.id}/transfer-leadership",
-        json={"new_leader_id": 2},
-    )
+    response = client.patch(f"/clubs/{club.id}/members/2/leader")
 
     assert response.status_code == 400
-    assert response.json()["detail"] == "Debe ser miembro"
+    assert response.json()["detail"] == "El usuario destino debe ser miembro del club"
+
+
+def test_transfer_leadership_same_leader_rejected(db, clear_dependency_overrides):
+    app.dependency_overrides[get_current_user] = override_user(1)
+
+    category = create_category(db)
+    club = create_club(db, category.id, leader_id=1)
+
+    client = TestClient(app)
+    response = client.patch(f"/clubs/{club.id}/members/1/leader")
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "El usuario ya es el líder actual"

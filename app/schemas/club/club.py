@@ -17,10 +17,6 @@ class ClubUpdate(BaseModel):
     image: str | None = Field(default=None, max_length=500)
 
 
-class TransferLeadershipRequest(BaseModel):
-    new_leader_id: int
-
-
 class ClubResponse(BaseModel):
     id: int
     name: str
