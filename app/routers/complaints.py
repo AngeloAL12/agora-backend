@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 
+from app.core.config import settings  # ✨ Añadido para el Fix del Bucket
 from app.core.database import get_db
+from app.core.roles import RoleName
 from app.core.security import get_current_user
-
-# Asegúrate de que las rutas a tus modelos sean las correctas:
 from app.models.auth.user import User
 from app.models.complaint import Complaint, ComplaintStatus
 from app.models.complaint.complaint_evidence import ComplaintEvidence
@@ -17,8 +17,8 @@ router = APIRouter(prefix="/complaints", tags=["Complaints (Staff)"])
 
 # --- Dependencia / Utilidad para verificar que es Staff ---
 def require_staff_role(current_user: User = Depends(get_current_user)):
-    # Ajusta esta validación según cómo se llame tu rol en la BD
-    if current_user.role.name not in ["staff", "admin"]:
+    # ✨ FIX 1: Uso del Enum RoleName en lugar de strings hardcodeados
+    if current_user.role.name not in [RoleName.STAFF, RoleName.ADMIN]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Acceso denegado. Se requieren permisos de Staff o Administrador.",
@@ -41,30 +41,25 @@ async def upload_complaint_evidence(
     complaint_id: int,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    current_user: User = Depends(
-        require_staff_role
-    ),  # 🔒 1. SEGURIDAD ACTIVADA DE NUEVO
+    current_user: User = Depends(require_staff_role),
 ):
     """Sube un archivo de evidencia al bucket privado y lo enlaza a la queja."""
 
-    # 🗄️ 2. VALIDACIÓN DE BASE DE DATOS ACTIVADA
     complaint = db.query(Complaint).filter(Complaint.id == complaint_id).first()
     if not complaint:
         raise HTTPException(status_code=404, detail="Queja no encontrada")
 
-    # Configuración de R2
-    bucket_name = "dev-agora-private"
+    # ✨ FIX 2: Uso de variables de entorno para el Bucket
+    bucket_name = settings.R2_BUCKET_PRIVATE
     prefix = f"complaints/{complaint_id}/evidence"
 
-    # ☁️ 3. SUBIDA A CLOUDFLARE (¡Que ya sabemos que funciona!)
     object_key = await storage_service.upload_file(
         file=file, bucket_name=bucket_name, prefix=prefix
     )
 
-    # 💾 4. GUARDADO EN BASE DE DATOS ACTIVADO
     new_evidence = ComplaintEvidence(
         id_complaint=complaint_id,
-        id_user=current_user.id,  # Usa el ID del Staff real
+        id_user=current_user.id,
         url=object_key,
     )
     db.add(new_evidence)
@@ -100,16 +95,15 @@ def update_complaint_status(
                 detail="No se puede resolver una queja sin antes subir una evidencia.",
             )
 
-    # Actualizamos el estado
     old_status = complaint.status
     complaint.status = status_update.status
 
-    # (Opcional pero muy recomendado) Guardamos el historial del cambio
+    # ✨ FIX 3: Corrección de nombres de campos para la base de datos
     status_history = ComplaintStatusHistory(
-        complaint_id=complaint.id,
+        id_complaint=complaint.id,
         old_status=old_status,
         new_status=status_update.status,
-        changed_by_user_id=current_user.id,
+        id_user=current_user.id,
     )
     db.add(status_history)
     db.commit()
