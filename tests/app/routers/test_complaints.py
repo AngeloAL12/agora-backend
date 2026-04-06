@@ -16,6 +16,13 @@ def _override_current_user(user_id: int = 1):
     )
 
 
+def _override_current_user_with_role(role: RoleName, user_id: int = 1):
+    app.dependency_overrides[get_current_user] = lambda: CurrentUser(
+        id=user_id,
+        role=role,
+    )
+
+
 def _create_user(db, role_name: str, email: str, oauth_sub: str) -> User:
     role = db.query(Role).filter(Role.name == role_name).one_or_none()
     if role is None:
@@ -247,3 +254,23 @@ def test_get_complaint_not_found(db, clear_dependency_overrides):
 
     assert response.status_code == 404
     assert "no encontrada" in response.json()["detail"].lower()
+
+
+def test_staff_can_access_get_all_complaints(db, clear_dependency_overrides):
+    _override_current_user_with_role(RoleName.STAFF)
+
+    db.add(
+        Complaint(
+            id_user=1,
+            title="Queja staff",
+            description="Detalle",
+            category=ComplaintCategory.ACADEMIC,
+            status=ComplaintStatus.PENDING,
+        )
+    )
+    db.commit()
+
+    client = TestClient(app)
+    response = client.get("/complaints")
+
+    assert response.status_code == 200

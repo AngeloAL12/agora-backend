@@ -6,7 +6,6 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.core.roles import RoleName
 from app.core.security import get_current_user
-from app.models.auth.user import User
 from app.models.complaint.complaint import Complaint, ComplaintCategory, ComplaintStatus
 from app.models.complaint.complaint_evidence import ComplaintEvidence
 from app.models.complaint.complaint_image import ComplaintImage
@@ -177,8 +176,8 @@ async def get_my_complaint_detail(
     return await _serialize_complaint(complaint)
 
 
-def require_staff_role(current_user: User = Depends(get_current_user)):
-    if current_user.role.name not in [RoleName.STAFF, RoleName.ADMIN]:
+def require_staff_role(current_user: CurrentUser = Depends(get_current_user)):
+    if current_user.role not in {RoleName.STAFF, RoleName.ADMIN}:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Acceso denegado. Se requieren permisos de Staff o Administrador.",
@@ -188,7 +187,8 @@ def require_staff_role(current_user: User = Depends(get_current_user)):
 
 @router.get("", response_model=list[ComplaintOut])
 def get_all_complaints(
-    db: Session = Depends(get_db), current_user: User = Depends(require_staff_role)
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_staff_role),
 ):
     complaints = db.query(Complaint).order_by(Complaint.created_at.desc()).all()
     return complaints
@@ -199,7 +199,7 @@ async def upload_complaint_evidence(
     complaint_id: int,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_staff_role),
+    current_user: CurrentUser = Depends(require_staff_role),
 ):
     complaint = db.query(Complaint).filter(Complaint.id == complaint_id).first()
     if not complaint:
@@ -231,7 +231,7 @@ def update_complaint_status(
     complaint_id: int,
     status_update: ComplaintStatusUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_staff_role),
+    current_user: CurrentUser = Depends(require_staff_role),
 ):
     complaint = db.query(Complaint).filter(Complaint.id == complaint_id).first()
     if not complaint:
