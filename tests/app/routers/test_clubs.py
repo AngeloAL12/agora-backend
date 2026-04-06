@@ -247,6 +247,38 @@ def test_update_club_invalid_category(db, clear_dependency_overrides):
     assert response.json()["detail"] == "Categoría inválida"
 
 
+def test_update_club_rejects_null_name(db, clear_dependency_overrides):
+    app.dependency_overrides[get_current_user] = override_user(1)
+
+    category = create_category(db)
+    club = create_club(db, category.id, leader_id=1)
+
+    client = TestClient(app)
+    response = client.patch(
+        f"/clubs/{club.id}",
+        json={"name": None},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "El nombre no puede ser null"
+
+
+def test_update_club_rejects_null_description(db, clear_dependency_overrides):
+    app.dependency_overrides[get_current_user] = override_user(1)
+
+    category = create_category(db)
+    club = create_club(db, category.id, leader_id=1)
+
+    client = TestClient(app)
+    response = client.patch(
+        f"/clubs/{club.id}",
+        json={"description": None},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "La descripción no puede ser null"
+
+
 def test_delete_club_only_leader(db, clear_dependency_overrides):
     app.dependency_overrides[get_current_user] = override_user(2)
 

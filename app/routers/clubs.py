@@ -1,3 +1,5 @@
+from typing import cast
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -101,27 +103,35 @@ def update_club(
         raise HTTPException(403, "Solo el líder puede editar")
 
     if "name" in payload.model_fields_set:
-        existing = db.query(Club).filter(Club.name == payload.name).first()
+        name = payload.name
+        if name is None:
+            raise HTTPException(400, "El nombre no puede ser null")
+
+        existing = db.query(Club).filter(Club.name == name).first()
         if existing and existing.id != club.id:
             raise HTTPException(400, "Nombre de club ya existe")
-        club.name = payload.name
+        club.name = cast(str, name)
 
     if "description" in payload.model_fields_set:
-        club.description = payload.description
+        description = payload.description
+        if description is None:
+            raise HTTPException(400, "La descripción no puede ser null")
+
+        club.description = cast(str, description)
 
     if "image" in payload.model_fields_set:
         club.image = payload.image
 
     if "id_category" in payload.model_fields_set:
-        category = (
-            db.query(ClubCategory)
-            .filter(ClubCategory.id == payload.id_category)
-            .first()
-        )
+        category_id = payload.id_category
+        if category_id is None:
+            raise HTTPException(400, "Categoría inválida")
+
+        category = db.query(ClubCategory).filter(ClubCategory.id == category_id).first()
         if not category:
             raise HTTPException(400, "Categoría inválida")
 
-        club.id_category = payload.id_category
+        club.id_category = cast(int, category_id)
 
     db.commit()
     db.refresh(club)
