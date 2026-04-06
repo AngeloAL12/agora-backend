@@ -260,4 +260,3 @@ def update_complaint_status(
         "message": "Estado actualizado exitosamente",
         "new_status": complaint.status,
     }
-
