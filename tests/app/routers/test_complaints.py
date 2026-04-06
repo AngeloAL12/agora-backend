@@ -257,11 +257,17 @@ def test_get_complaint_not_found(db, clear_dependency_overrides):
 
 
 def test_staff_can_access_get_all_complaints(db, clear_dependency_overrides):
+    complaint_owner = _create_user(
+        db,
+        RoleName.USER,
+        "student_staff@itmexicali.edu.mx",
+        "sub-staff",
+    )
     _override_current_user_with_role(RoleName.STAFF)
 
     db.add(
         Complaint(
-            id_user=1,
+            id_user=complaint_owner.id,
             title="Queja staff",
             description="Detalle",
             category=ComplaintCategory.ACADEMIC,
