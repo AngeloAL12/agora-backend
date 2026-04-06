@@ -1,15 +1,59 @@
+import pytest
 from fastapi.testclient import TestClient
 
+from app.core.roles import RoleName
 from app.core.security import get_current_user
 from app.main import app
+from app.models.auth.role import Role
+from app.models.auth.user import User
 from app.models.club.club import Club
 from app.models.club.club_category import ClubCategory
 from app.models.club.club_member import ClubMember
 from app.schemas.auth.auth import CurrentUser
 
 
+@pytest.fixture(autouse=True)
+def seed_club_users(db):
+    ensure_user(db, 1)
+    ensure_user(db, 2)
+    ensure_user(db, 3)
+
+
 def override_user(user_id=1):
-    return lambda: CurrentUser(id=user_id, role="user")
+    return lambda: CurrentUser(id=user_id, role=RoleName.USER)
+
+
+def ensure_user(db, user_id: int):
+    role = db.query(Role).filter(Role.name == RoleName.USER.value).first()
+    if not role:
+        role = Role(name=RoleName.USER.value)
+        db.add(role)
+        db.commit()
+        db.refresh(role)
+
+    user = db.query(User).filter(User.id == user_id).first()
+    if user:
+        return user
+
+    user = User(
+        id=user_id,
+        email=f"user{user_id}@itmexicali.edu.mx",
+        oauth_provider="test",
+        oauth_sub=f"test-{user_id}",
+        name=f"User {user_id}",
+        id_role=role.id,
+        is_active=True,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+def create_membership(db, club_id: int, user_id: int):
+    ensure_user(db, user_id)
+    db.add(ClubMember(id_club=club_id, id_user=user_id))
+    db.commit()
 
 
 def create_category(db, name="Deportes"):
@@ -21,6 +65,8 @@ def create_category(db, name="Deportes"):
 
 
 def create_club(db, category_id, leader_id=1, name="Club Test", description="Desc"):
+    ensure_user(db, leader_id)
+
     club = Club(
         name=name,
         description=description,
@@ -116,9 +162,8 @@ def test_get_club_detail_members_count(db, clear_dependency_overrides):
     category = create_category(db)
     club = create_club(db, category.id)
 
-    db.add(ClubMember(id_club=club.id, id_user=2))
-    db.add(ClubMember(id_club=club.id, id_user=3))
-    db.commit()
+    create_membership(db, club.id, 2)
+    create_membership(db, club.id, 3)
 
     client = TestClient(app)
     response = client.get(f"/clubs/{club.id}")
@@ -308,8 +353,7 @@ def test_delete_club_success(db, clear_dependency_overrides):
     category = create_category(db)
     club = create_club(db, category.id, leader_id=1)
 
-    db.add(ClubMember(id_club=club.id, id_user=2))
-    db.commit()
+    create_membership(db, club.id, 2)
 
     client = TestClient(app)
     response = client.delete(f"/clubs/{club.id}")
@@ -349,8 +393,7 @@ def test_join_club_already_member(db, clear_dependency_overrides):
     category = create_category(db)
     club = create_club(db, category.id)
 
-    db.add(ClubMember(id_club=club.id, id_user=2))
-    db.commit()
+    create_membership(db, club.id, 2)
 
     client = TestClient(app)
     response = client.post(f"/clubs/{club.id}/members")
@@ -416,8 +459,7 @@ def test_remove_member_only_leader(db, clear_dependency_overrides):
     category = create_category(db)
     club = create_club(db, category.id, leader_id=1)
 
-    db.add(ClubMember(id_club=club.id, id_user=3))
-    db.commit()
+    create_membership(db, club.id, 3)
 
     client = TestClient(app)
     response = client.delete(f"/clubs/{club.id}/members/3")
@@ -455,8 +497,7 @@ def test_remove_member_success(db, clear_dependency_overrides):
     category = create_category(db)
     club = create_club(db, category.id, leader_id=1)
 
-    db.add(ClubMember(id_club=club.id, id_user=2))
-    db.commit()
+    create_membership(db, club.id, 2)
 
     client = TestClient(app)
     response = client.delete(f"/clubs/{club.id}/members/2")
@@ -502,8 +543,7 @@ def test_transfer_leadership_only_leader(db, clear_dependency_overrides):
     category = create_category(db)
     club = create_club(db, category.id, leader_id=1)
 
-    db.add(ClubMember(id_club=club.id, id_user=2))
-    db.commit()
+    create_membership(db, club.id, 2)
 
     client = TestClient(app)
     response = client.patch(f"/clubs/{club.id}/members/2/leader")
