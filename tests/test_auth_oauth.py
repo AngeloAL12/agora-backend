@@ -46,16 +46,24 @@ def test_google_login_success(mock_verify, user_role):
 
 
 @patch("google.oauth2.id_token.verify_oauth2_token")
-def test_google_login_success_android_audience(mock_verify, user_role):
+def test_google_login_success_android_audience(mock_verify, user_role, monkeypatch):
     from app.core.config import settings
 
+    # 1. Definimos un ID falso y se lo inyectamos a los settings usando monkeypatch
+    fake_android_id = "android-test-id.apps.googleusercontent.com"
+    monkeypatch.setattr(settings, "GOOGLE_ANDROID_CLIENT_ID", fake_android_id)
+
+    # 2. Le decimos al mock que use ese mismo ID en el token
     mock_verify.return_value = {
-        "aud": settings.GOOGLE_ANDROID_CLIENT_ID,
+        "aud": fake_android_id,
         "email": "android@itmexicali.edu.mx",
         "name": "Android User",
         "sub": "google-android-123",
     }
+
     response = client.post("/auth/google/mobile-login", json={"token": "fake-token"})
+
+    # 3. Validamos que la respuesta sea exitosa
     assert response.status_code == 200
     assert "access_token" in response.json()
 

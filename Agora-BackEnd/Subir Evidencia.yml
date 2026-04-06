@@ -1,11 +1,11 @@
 info:
-  name: push-token
+  name: Subir Evidencia
   type: http
-  seq: 4
+  seq: 8
 
 http:
   method: POST
-  url: http://localhost:8000/push-token
+  url: http://127.0.0.1:8000/complaints/1/evidence
   auth: inherit
 
 settings:

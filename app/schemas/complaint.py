@@ -38,3 +38,21 @@ class ComplaintListItemResponse(BaseModel):
     title: str
     status: ComplaintStatus
     created_at: datetime | Any = Field(..., description="Creation timestamp")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ComplaintOut(BaseModel):
+    id: int
+    id_user: int
+    title: str
+    description: str
+    status: ComplaintStatus
+    has_appealed: bool
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ComplaintStatusUpdate(BaseModel):
+    status: ComplaintStatus
