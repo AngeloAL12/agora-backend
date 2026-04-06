@@ -16,3 +16,34 @@ query {
 headers {
   Content-Type: application/json
 }
+
+docs {
+  # Agora Backend API
+  
+  ## Flujo rápido para pruebas
+  
+  1. **Obtener token de prueba:**
+     - Ejecuta el endpoint `01-Auth-Test-Login.bru`
+     - Copia el `access_token` de la respuesta
+  
+  2. **Usar el token en otros endpoints:**
+     - Actualiza el token en `auth:bearer { token: ... }`
+     - O usa variables en Bruno: `token: {{access_token}}`
+  
+  3. **Probar los endpoints:**
+     - `GET /auth/me` - Ver usuario actual
+     - `POST /complaints` - Crear queja (multipart/form-data, con o sin imágenes)
+     - `GET /complaints/me` - Listar mis quejas
+     - `GET /complaints/{id}` - Ver detalle de queja
+  
+  ## Endpoints de autenticación
+  - `01-Auth-Test-Login.bru` - ⭐ RECOMENDADO para desarrollo
+  - `05-Auth-Google-Mobile-Login.bru` - Requiere token de Google válido
+  - `06-Auth-Microsoft-Mobile-Login.bru` - Requiere token de Microsoft válido
+  
+  ## Endpoints de quejas
+  - `12-Complaints-Create.bru` - Crear queja con JSON ⚡ MÁS FÁCIL
+  - `12b-Complaints-Create-With-Images.bru` - Crear queja con imágenes
+  - `13-Complaints-Get-My.bru` - Listar mis quejas
+  - `14-Complaints-Get-Detail.bru` - Detalle de una queja
+}

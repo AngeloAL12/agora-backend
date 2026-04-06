@@ -61,6 +61,13 @@ uv sync --group dev
 uv run alembic upgrade head
 ```
 
+> Si aparece error `UnicodeDecodeError: 'utf-8' codec can't decode byte 0xf3`, forzar cliente UTF-8:
+>
+> - Windows (PowerShell): `setx PGCLIENTENCODING UTF8` y reiniciar terminal
+> - En app (SQLAlchemy): `connect_args={"options": "-c client_encoding=UTF8"}`
+>
+> - PostgreSQL: `SHOW client_encoding; SHOW lc_messages;` -> ideal `UTF8`.
+
 5. Verificar revision actual:
 
 ```bash
