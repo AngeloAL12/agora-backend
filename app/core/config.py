@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     MICROSOFT_CLIENT_ID: str = ""
     MICROSOFT_TENANT_ID: str = ""
 
+    API_TESTING_SECRET: str | None = None
+
     # Cloudflare R2 Storage
     R2_ACCOUNT_ID: str
     R2_ACCESS_KEY_ID: str
