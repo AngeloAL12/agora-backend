@@ -1,0 +1,20 @@
+meta {
+  name: Check Admin Access
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{base_url}}/users/admin
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{auth_token}}
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

@@ -1,0 +1,32 @@
+meta {
+  name: Edit Leadership
+  type: http
+  seq: 9
+}
+
+patch {
+  url: {{base_url}}/clubs/{{club_id}}/members/{{user_id}}/leader
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{auth_token}}
+}
+
+body:json {
+  {
+    "name": "...", 
+    "description": "..."
+  }
+}
+
+vars:pre-request {
+  club_id: 1
+  user_id: 1
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

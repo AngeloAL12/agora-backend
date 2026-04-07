@@ -1,4 +1,0 @@
-name: Main
-variables:
-  - name: base_url
-    value: https://agora.angelolo.lat
