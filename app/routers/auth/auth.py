@@ -146,3 +146,24 @@ def read_users_me(current_user: CurrentUser = Depends(get_current_user)):
     Devuelve los datos del usuario actual autenticado.
     """
     return {"id": current_user.id, "role": current_user.role}
+
+
+@router.get("/dev-token")
+def get_dev_token(user_id: str = "1", testing_secret: str | None = None):
+    """
+    Endpoint para obtener un token directamente.
+    En "development" es de acceso libre.
+    En "production" requiere pasar el `testing_secret` correcto.
+    """
+    if settings.ENV != "development":
+        if (
+            not settings.API_TESTING_SECRET
+            or testing_secret != settings.API_TESTING_SECRET
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Not found",
+            )
+
+    access_token = create_access_token(data={"sub": user_id})
+    return {"access_token": access_token, "token_type": "bearer"}
