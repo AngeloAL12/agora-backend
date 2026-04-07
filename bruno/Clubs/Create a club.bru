@@ -1,0 +1,28 @@
+meta {
+  name: Create a club
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{base_url}}/clubs
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{auth_token}}
+}
+
+body:json {
+  {
+    "name": "...", 
+    "description": "...", 
+    "category_id": 1
+  }
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

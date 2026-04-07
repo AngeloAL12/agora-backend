@@ -1,0 +1,22 @@
+meta {
+  name: Register Push Token
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{base_url}}/push-token
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "token": "..."
+  }
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

@@ -1,0 +1,31 @@
+meta {
+  name: Add Evidence
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{base_url}}/complaints/{{complaint_id}}/evidence
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{auth_token}}
+}
+
+body:json {
+  {
+    "file_url": "...", 
+    "type": "image"
+  }
+}
+
+vars:pre-request {
+  complaint_id: 1
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

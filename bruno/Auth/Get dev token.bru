@@ -1,0 +1,33 @@
+meta {
+  name: Get dev token
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{base_url}}/auth/dev-token?testing_secret=pruebas
+  body: none
+  auth: bearer
+}
+
+params:query {
+  testing_secret: pruebas
+}
+
+auth:bearer {
+  token: {{auth_token}}
+}
+
+script:post-response {
+  if (res.getStatus() === 200) {
+    const body = res.getBody();
+    bru.setEnvVar("auth_token", body.access_token);
+    console.log("Token guardado exitosamente: ", body.access_token);
+  }
+  
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

@@ -1,0 +1,20 @@
+meta {
+  name: Get All Complaints
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{base_url}}/complaints
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{auth_token}}
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

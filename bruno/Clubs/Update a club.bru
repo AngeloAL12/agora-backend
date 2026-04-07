@@ -1,0 +1,31 @@
+meta {
+  name: Update a club
+  type: http
+  seq: 4
+}
+
+patch {
+  url: {{base_url}}/clubs/{{club_id}}
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{auth_token}}
+}
+
+body:json {
+  {
+    "name": "...", 
+    "description": "..."
+  }
+}
+
+vars:pre-request {
+  club_id: 1
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

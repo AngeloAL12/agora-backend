@@ -1,0 +1,25 @@
+meta {
+  name: Quit a user from a club
+  type: http
+  seq: 8
+}
+
+delete {
+  url: {{base_url}}/clubs/{{club_id}}/members/{{user_id}}
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{auth_token}}
+}
+
+vars:pre-request {
+  club_id: 1
+  user_id: 1
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}
