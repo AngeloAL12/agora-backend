@@ -9,8 +9,21 @@ class RoleNotFoundError(Exception):
     """Raised when the 'user' role does not exist in the database."""
 
 
+def format_user_name(raw_name: str) -> str:
+    if not raw_name:
+        return ""
+    name = raw_name.rstrip(" _\t\n\r")
+    words = name.split()
+    return " ".join([w.capitalize() for w in words])
+
+
 def verify_and_save_user(
-    db: Session, email: str, name: str, oauth_provider: str, oauth_sub: str
+    db: Session,
+    email: str,
+    name: str,
+    oauth_provider: str,
+    oauth_sub: str,
+    photo: str | None = None,
 ):
     """
     Lógica de negocio para buscar un usuario existente o
@@ -35,7 +48,8 @@ def verify_and_save_user(
 
         user = User(
             email=email,
-            name=name,
+            name=format_user_name(name),
+            photo=photo,
             oauth_provider=oauth_provider,
             oauth_sub=oauth_sub,
             id_role=student_role.id,

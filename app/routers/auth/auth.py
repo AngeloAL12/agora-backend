@@ -73,6 +73,7 @@ def google_mobile_login(request_data: TokenRequest, db: Session = Depends(get_db
             db=db,
             email=email,
             name=idinfo.get("name", "Estudiante ITM"),
+            photo=idinfo.get("picture"),
             oauth_provider="google",
             oauth_sub=idinfo.get("sub") or "",
         )
@@ -121,6 +122,7 @@ def microsoft_mobile_login(request_data: TokenRequest, db: Session = Depends(get
             db=db,
             email=email,
             name=claims.get("name", "Estudiante TecNM"),
+            photo=claims.get("picture"),
             oauth_provider="microsoft",
             oauth_sub=claims.get("sub") or "",
         )
