@@ -127,14 +127,14 @@ def test_microsoft_login_success(mock_verify, user_role):
 
 
 @patch("app.routers.auth.auth._verify_microsoft_token")
-def test_microsoft_login_invalid_domain(mock_verify, db):
+def test_microsoft_login_no_email(mock_verify, db):
     mock_verify.return_value = {
-        "email": "hacker@hotmail.com",
-        "name": "Hacker MS",
-        "sub": "ms-bad",
+        "name": "No Email User",
+        "sub": "ms-no-email",
     }
     response = client.post("/auth/microsoft/mobile-login", json={"token": "fake-token"})
     assert response.status_code == 403
+    assert "No se encontró un correo válido" in response.json()["detail"]
 
 
 @patch("app.routers.auth.auth._verify_microsoft_token")
