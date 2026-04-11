@@ -1,4 +1,4 @@
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -190,3 +190,54 @@ def test_get_me_success(clear_dependency_overrides):
     assert response.status_code == 200
     assert "id" in response.json()
     assert "role" in response.json()
+
+
+def test_verify_microsoft_token_uses_jwks_endpoint(monkeypatch):
+    from app.core.config import settings
+    from app.routers.auth.auth import _verify_microsoft_token
+
+    fake_response = Mock()
+    fake_response.json.return_value = {"keys": [{"kid": "abc"}]}
+
+    get_mock = Mock(return_value=fake_response)
+    decode_mock = Mock(return_value={"sub": "ms-user"})
+
+    monkeypatch.setattr("app.routers.auth.auth.http_requests.get", get_mock)
+    monkeypatch.setattr("app.routers.auth.auth.jwt.decode", decode_mock)
+
+    result = _verify_microsoft_token(
+        token="ms-token",
+        client_id=settings.MICROSOFT_CLIENT_ID,
+        tenant_id=settings.MICROSOFT_TENANT_ID,
+    )
+
+    assert result == {"sub": "ms-user"}
+    get_mock.assert_called_once_with(
+        f"https://login.microsoftonline.com/{settings.MICROSOFT_TENANT_ID}/discovery/v2.0/keys",
+        timeout=10,
+    )
+    decode_mock.assert_called_once()
+
+
+def test_get_dev_token_returns_404_in_production_without_secret(monkeypatch):
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "ENV", "production")
+    monkeypatch.setattr(settings, "API_TESTING_SECRET", "expected-secret")
+
+    response = client.get("/auth/dev-token")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Not found"
+
+
+def test_get_dev_token_returns_token_in_production_with_secret(monkeypatch):
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "ENV", "production")
+    monkeypatch.setattr(settings, "API_TESTING_SECRET", "expected-secret")
+
+    response = client.get("/auth/dev-token?testing_secret=expected-secret")
+
+    assert response.status_code == 200
+    assert "access_token" in response.json()
