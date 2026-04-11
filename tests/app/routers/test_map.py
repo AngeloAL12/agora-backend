@@ -76,8 +76,10 @@ def test_get_building_detail_success(db, clear_dependency_overrides, monkeypatch
     assert data["description"] == "Aulas de ingeniería en sistemas."
     assert len(data["images"]) == 2
     assert len(data["views_360"]) == 2
-    assert data["images"][0]["floor"] in {1, 2}
-    assert data["views_360"][0]["floor"] in {1, 2}
+    assert data["images"][0]["floor"] == 1
+    assert data["images"][1]["floor"] == 2
+    assert data["views_360"][0]["floor"] == 1
+    assert data["views_360"][1]["floor"] == 2
 
 
 def test_get_building_detail_not_found(db, clear_dependency_overrides):

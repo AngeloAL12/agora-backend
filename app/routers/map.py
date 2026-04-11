@@ -18,9 +18,9 @@ from app.services.storage_service import storage_service
 router = APIRouter(prefix="/map", tags=["map"])
 
 
-@router.get("/buildings/{id}", response_model=BuildingDetailResponse)
+@router.get("/buildings/{building_id}", response_model=BuildingDetailResponse)
 async def get_building_detail(
-    id: int,
+    building_id: int,
     current_user: CurrentUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -29,7 +29,7 @@ async def get_building_detail(
     building = db.execute(
         select(Building)
         .options(selectinload(Building.images), selectinload(Building.images_360))
-        .where(Building.id == id)
+        .where(Building.id == building_id)
     ).scalar_one_or_none()
 
     if building is None:
@@ -50,6 +50,7 @@ async def get_building_detail(
                 floor=image.floor,
             )
         )
+    images.sort(key=lambda x: x.floor)
 
     views_360: list[BuildingMediaResponse] = []
     for view in building.images_360:
@@ -63,6 +64,7 @@ async def get_building_detail(
                 floor=view.floor,
             )
         )
+    views_360.sort(key=lambda x: x.floor)
 
     return BuildingDetailResponse(
         id=building.id,
@@ -74,9 +76,9 @@ async def get_building_detail(
     )
 
 
-@router.get("/points/{id}", response_model=PointOfInterestDetailResponse)
+@router.get("/points/{point_id}", response_model=PointOfInterestDetailResponse)
 async def get_point_of_interest_detail(
-    id: int,
+    point_id: int,
     current_user: CurrentUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -88,7 +90,7 @@ async def get_point_of_interest_detail(
             selectinload(PointOfInterest.images),
             selectinload(PointOfInterest.images_360),
         )
-        .where(PointOfInterest.id == id)
+        .where(PointOfInterest.id == point_id)
     ).scalar_one_or_none()
 
     if point is None:
