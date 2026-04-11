@@ -36,7 +36,23 @@ def verify_and_save_user(
         )
     ).scalar_one_or_none()
 
-    if not user:
+    if getattr(user, "email", None) != email and not user:
+        # Si no se encuentra por provider/sub, buscar por email para enlazar cuentas
+        user = db.execute(select(User).where(User.email == email)).scalar_one_or_none()
+
+    if user:
+        # Actualiza los datos con la info más reciente del proveedor de identidad
+        user.email = email
+        user.oauth_provider = oauth_provider
+        user.oauth_sub = oauth_sub
+        user.name = format_user_name(name) or user.name
+        if photo:
+            user.photo = photo
+
+        db.commit()
+        db.refresh(user)
+    else:
+        # Crear usuario nuevo
         student_role = db.execute(
             select(Role).where(Role.name == "user")
         ).scalar_one_or_none()
