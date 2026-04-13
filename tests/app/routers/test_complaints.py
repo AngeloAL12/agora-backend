@@ -322,7 +322,7 @@ def test_upload_evidence_success(db, clear_dependency_overrides, monkeypatch):
         id_user=owner.id,
         title="Queja con evidencia",
         description="Detalle",
-        category=ComplaintCategory.ACADEMIC,
+        category=ComplaintCategory.MAINTENANCE,
         status=ComplaintStatus.PENDING,
     )
     db.add(complaint)
@@ -426,7 +426,7 @@ def test_update_complaint_status_success(db, clear_dependency_overrides):
         id_user=owner.id,
         title="Actualizar estado",
         description="Detalle",
-        category=ComplaintCategory.ACADEMIC,
+        category=ComplaintCategory.MAINTENANCE,
         status=ComplaintStatus.PENDING,
     )
     db.add(complaint)
