@@ -9,6 +9,7 @@ from app.core.database import Base
 
 if TYPE_CHECKING:
     from app.models.auth.user import User
+    from app.models.campus import Building
     from app.models.complaint.complaint_evidence import ComplaintEvidence
     from app.models.complaint.complaint_image import ComplaintImage
     from app.models.complaint.complaint_status_history import ComplaintStatusHistory
@@ -21,9 +22,19 @@ class ComplaintStatus(StrEnum):
     REJECTED = "REJECTED"
 
 
+class ComplaintType(StrEnum):
+    REPORT = "REPORT"
+    SUGGESTION = "SUGGESTION"
+
+
 class ComplaintCategory(StrEnum):
-    ACADEMIC = "ACADEMIC"
+    MAINTENANCE = "MAINTENANCE"
+    CLEANING = "CLEANING"
     SECURITY = "SECURITY"
+    SERVICES = "SERVICES"
+    INFRASTRUCTURE = "INFRASTRUCTURE"
+    OTHER = "OTHER"
+    GENERAL = "GENERAL"
 
 
 class Complaint(Base):
@@ -31,11 +42,18 @@ class Complaint(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     id_user: Mapped[int] = mapped_column(ForeignKey("user.id"), nullable=False)
+    type: Mapped[ComplaintType] = mapped_column(
+        SQLAlchemyEnum(ComplaintType), default=ComplaintType.REPORT, nullable=False
+    )
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
     category: Mapped[ComplaintCategory] = mapped_column(
         SQLAlchemyEnum(ComplaintCategory), nullable=False
     )
+    id_building: Mapped[int | None] = mapped_column(
+        ForeignKey("building.id", ondelete="SET NULL"), nullable=True
+    )
+    classroom: Mapped[str | None] = mapped_column(String(255), nullable=True)
     status: Mapped[ComplaintStatus] = mapped_column(
         SQLAlchemyEnum(ComplaintStatus), default=ComplaintStatus.PENDING, nullable=False
     )
@@ -47,6 +65,7 @@ class Complaint(Base):
 
     # Relationships
     user: Mapped["User"] = relationship("User", back_populates="complaints")
+    building: Mapped["Building | None"] = relationship("Building")
     images: Mapped[list["ComplaintImage"]] = relationship(
         "ComplaintImage", back_populates="complaint", cascade="all, delete-orphan"
     )
