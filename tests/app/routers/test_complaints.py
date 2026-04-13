@@ -6,6 +6,7 @@ from app.main import app
 from app.models.auth.role import Role
 from app.models.auth.user import User
 from app.models.complaint.complaint import Complaint, ComplaintCategory, ComplaintStatus
+from app.models.complaint.complaint_evidence import ComplaintEvidence
 from app.schemas.auth.auth import CurrentUser
 
 
@@ -280,3 +281,171 @@ def test_staff_can_access_get_all_complaints(db, clear_dependency_overrides):
     response = client.get("/complaints")
 
     assert response.status_code == 200
+
+
+def test_non_staff_cannot_access_get_all_complaints(db, clear_dependency_overrides):
+    user = _create_user(
+        db,
+        RoleName.USER,
+        "student_no_staff@itmexicali.edu.mx",
+        "sub-no-staff",
+    )
+    _override_current_user(user.id)
+
+    client = TestClient(app)
+    response = client.get("/complaints")
+
+    assert response.status_code == 403
+    assert "Staff" in response.json()["detail"]
+
+
+def test_upload_evidence_complaint_not_found(db, clear_dependency_overrides):
+    staff = _create_user(db, RoleName.STAFF, "staff404@itmexicali.edu.mx", "staff-404")
+    _override_current_user_with_role(RoleName.STAFF, staff.id)
+
+    client = TestClient(app)
+    response = client.post(
+        "/complaints/9999/evidence",
+        files=[("file", ("evidence.png", b"evidence", "image/png"))],
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Queja no encontrada"
+
+
+def test_upload_evidence_success(db, clear_dependency_overrides, monkeypatch):
+    staff = _create_user(db, RoleName.STAFF, "staff_ok@itmexicali.edu.mx", "staff-ok")
+    owner = _create_user(db, RoleName.USER, "owner@itmexicali.edu.mx", "owner-1")
+    _override_current_user_with_role(RoleName.STAFF, staff.id)
+
+    complaint = Complaint(
+        id_user=owner.id,
+        title="Queja con evidencia",
+        description="Detalle",
+        category=ComplaintCategory.MAINTENANCE,
+        status=ComplaintStatus.PENDING,
+    )
+    db.add(complaint)
+    db.commit()
+    db.refresh(complaint)
+
+    async def fake_upload_file(file, bucket_name, prefix):
+        assert bucket_name
+        assert prefix == f"complaints/{complaint.id}/evidence"
+        return f"{prefix}/stored-evidence.png"
+
+    monkeypatch.setattr(
+        "app.routers.complaints.storage_service.upload_file",
+        fake_upload_file,
+    )
+
+    client = TestClient(app)
+    response = client.post(
+        f"/complaints/{complaint.id}/evidence",
+        files=[("file", ("evidence.png", b"evidence", "image/png"))],
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["message"] == "Evidencia subida y guardada exitosamente"
+    assert (
+        data["object_key"] == f"complaints/{complaint.id}/evidence/stored-evidence.png"
+    )
+
+
+def test_update_complaint_status_not_found(db, clear_dependency_overrides):
+    staff = _create_user(
+        db,
+        RoleName.STAFF,
+        "staff_status_nf@itmexicali.edu.mx",
+        "staff-status-nf",
+    )
+    _override_current_user_with_role(RoleName.STAFF, staff.id)
+
+    client = TestClient(app)
+    response = client.patch("/complaints/9999/status", json={"status": "IN_PROGRESS"})
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Queja no encontrada"
+
+
+def test_update_complaint_status_resolved_without_evidence_returns_400(
+    db, clear_dependency_overrides
+):
+    staff = _create_user(
+        db,
+        RoleName.STAFF,
+        "staff_status400@itmexicali.edu.mx",
+        "staff-status-400",
+    )
+    owner = _create_user(
+        db,
+        RoleName.USER,
+        "owner_status400@itmexicali.edu.mx",
+        "owner-status-400",
+    )
+    _override_current_user_with_role(RoleName.STAFF, staff.id)
+
+    complaint = Complaint(
+        id_user=owner.id,
+        title="Sin evidencia",
+        description="No debe resolver",
+        category=ComplaintCategory.SECURITY,
+        status=ComplaintStatus.PENDING,
+    )
+    db.add(complaint)
+    db.commit()
+    db.refresh(complaint)
+
+    client = TestClient(app)
+    response = client.patch(
+        f"/complaints/{complaint.id}/status",
+        json={"status": "RESOLVED"},
+    )
+
+    assert response.status_code == 400
+    assert "sin antes subir una evidencia" in response.json()["detail"]
+
+
+def test_update_complaint_status_success(db, clear_dependency_overrides):
+    staff = _create_user(
+        db,
+        RoleName.STAFF,
+        "staff_status_ok@itmexicali.edu.mx",
+        "staff-status-ok",
+    )
+    owner = _create_user(
+        db,
+        RoleName.USER,
+        "owner_status_ok@itmexicali.edu.mx",
+        "owner-status-ok",
+    )
+    _override_current_user_with_role(RoleName.STAFF, staff.id)
+
+    complaint = Complaint(
+        id_user=owner.id,
+        title="Actualizar estado",
+        description="Detalle",
+        category=ComplaintCategory.MAINTENANCE,
+        status=ComplaintStatus.PENDING,
+    )
+    db.add(complaint)
+    db.flush()
+    db.add(
+        ComplaintEvidence(
+            id_complaint=complaint.id,
+            id_user=staff.id,
+            url=f"complaints/{complaint.id}/evidence/manual.png",
+        )
+    )
+    db.commit()
+
+    client = TestClient(app)
+    response = client.patch(
+        f"/complaints/{complaint.id}/status",
+        json={"status": "RESOLVED"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["message"] == "Estado actualizado exitosamente"
+    assert response.json()["new_status"] == "RESOLVED"
