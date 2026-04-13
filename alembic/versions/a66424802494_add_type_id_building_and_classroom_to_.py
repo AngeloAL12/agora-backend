@@ -31,6 +31,7 @@ def upgrade() -> None:
             "type",
             complainttype,
             nullable=False,
+            server_default="REPORT",
         ),
     )
     op.add_column("complaint", sa.Column("id_building", sa.Integer(), nullable=True))
