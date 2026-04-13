@@ -73,14 +73,14 @@ def test_create_complaint_with_image(db, clear_dependency_overrides, monkeypatch
         data={
             "title": "Beca",
             "description": "No se reflejo el pago",
-            "category": "ACADEMIC",
+            "category": "MAINTENANCE",
         },
         files=[("images", ("evidence.png", b"image-bytes", "image/png"))],
     )
 
     assert response.status_code == 201
     assert response.json()["title"] == "Beca"
-    assert response.json()["category"] == "ACADEMIC"
+    assert response.json()["category"] == "MAINTENANCE"
     assert response.json()["status"] == ComplaintStatus.PENDING
     assert response.json()["images"] == [
         {
@@ -107,7 +107,7 @@ def test_get_my_complaints_returns_only_owned_items(db, clear_dependency_overrid
             id_user=user.id,
             title="Mi queja",
             description="Detalle",
-            category=ComplaintCategory.ACADEMIC,
+            category=ComplaintCategory.MAINTENANCE,
             status=ComplaintStatus.PENDING,
         )
     )
@@ -140,7 +140,7 @@ def test_get_my_complaint_detail_returns_owned_complaint(
         id_user=user.id,
         title="Detalle",
         description="Texto largo",
-        category=ComplaintCategory.ACADEMIC,
+        category=ComplaintCategory.MAINTENANCE,
         status=ComplaintStatus.PENDING,
     )
     db.add(complaint)
@@ -230,7 +230,7 @@ def test_create_complaint_with_too_many_images(
         data={
             "title": "Too Many Images",
             "description": "This complaint has 4 images",
-            "category": "ACADEMIC",
+            "category": "MAINTENANCE",
         },
         files=[
             ("images", ("img1.png", b"image1", "image/png")),
@@ -270,7 +270,7 @@ def test_staff_can_access_get_all_complaints(db, clear_dependency_overrides):
             id_user=complaint_owner.id,
             title="Queja staff",
             description="Detalle",
-            category=ComplaintCategory.ACADEMIC,
+            category=ComplaintCategory.MAINTENANCE,
             status=ComplaintStatus.PENDING,
         )
     )
