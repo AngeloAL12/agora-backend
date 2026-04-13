@@ -1,5 +1,4 @@
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -21,7 +20,7 @@ class EventBase(BaseModel):
     @field_validator("date")
     @classmethod
     def date_must_be_future(cls, v: datetime):
-        if v <= datetime.now(timezone.utc):
+        if v <= datetime.now(UTC):
             raise ValueError("La fecha debe ser futura")
         return v
 
@@ -40,7 +39,7 @@ class EventUpdate(BaseModel):
     @field_validator("date")
     @classmethod
     def date_must_be_future(cls, v: datetime | None):
-        if v and v <= datetime.now(timezone.utc):
+        if v and v <= datetime.now(UTC):
             raise ValueError("La fecha debe ser futura")
         return v
 

@@ -1,12 +1,13 @@
 from datetime import datetime
 from typing import TYPE_CHECKING
-from sqlalchemy import DateTime, ForeignKey, String, Text, Float, func
+
+from sqlalchemy import DateTime, Float, ForeignKey, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
+
 from app.core.database import Base
 
 if TYPE_CHECKING:
-    from app.models.auth.user import User
-    from app.models.club.club import Club
+    pass
 
 class ClubEvent(Base):
     __tablename__ = "club_event"
