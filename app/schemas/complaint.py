@@ -36,6 +36,7 @@ class ComplaintResponse(BaseModel):
 class ComplaintListItemResponse(BaseModel):
     id: int
     title: str
+    description: str
     status: ComplaintStatus
     created_at: datetime | Any = Field(..., description="Creation timestamp")
 

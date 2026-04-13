@@ -142,6 +142,7 @@ async def get_my_complaints(
         ComplaintListItemResponse(
             id=complaint.id,
             title=complaint.title,
+            description=complaint.description,
             status=complaint.status,
             created_at=complaint.created_at,
         )
