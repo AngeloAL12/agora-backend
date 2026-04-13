@@ -33,6 +33,7 @@ class ComplaintCategory(StrEnum):
     SECURITY = "SECURITY"
     SERVICES = "SERVICES"
     INFRASTRUCTURE = "INFRASTRUCTURE"
+    ACADEMIC = "ACADEMIC"
     OTHER = "OTHER"
     GENERAL = "GENERAL"
 
