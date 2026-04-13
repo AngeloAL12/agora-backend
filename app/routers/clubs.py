@@ -1,6 +1,6 @@
 from typing import cast
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -9,6 +9,7 @@ from app.core.security import get_current_user
 from app.models.club.club import Club
 from app.models.club.club_category import ClubCategory
 from app.models.club.club_member import ClubMember
+from app.models.club.event import ClubEvent  # <-- Asegúrate de que tu modelo se llame así
 from app.schemas.auth.auth import CurrentUser
 from app.schemas.club.club import (
     ClubCreate,
@@ -17,8 +18,31 @@ from app.schemas.club.club import (
     ClubUpdate,
 )
 
+# <-- Asegúrate de haber guardado tus esquemas de eventos aquí como vimos en el paso 1
+from app.schemas.club.event import EventCreate, EventUpdate, EventResponse 
+
 router = APIRouter(prefix="/clubs", tags=["clubs"])
 
+# --- Helper de validación de membresía para eventos ---
+def _verify_membership(club: Club, user_id: int, db: Session, require_leader: bool = False):
+    if require_leader:
+        if club.id_leader != user_id:
+            raise HTTPException(403, "Solo el líder puede realizar esta acción")
+        return
+
+    # Si es el líder, automáticamente tiene acceso como miembro
+    if club.id_leader == user_id:
+        return
+
+    is_member = db.query(ClubMember).filter(
+        ClubMember.id_club == club.id,
+        ClubMember.id_user == user_id
+    ).first()
+
+    if not is_member:
+        raise HTTPException(403, "El usuario no es miembro del club")
+
+# --- Endpoints existentes ---
 
 @router.get("", response_model=list[ClubResponse])
 def get_clubs(
@@ -297,3 +321,128 @@ def transfer_leadership(
     db.refresh(club)
 
     return {"message": "Liderazgo transferido"}
+
+
+# ==========================================
+# NUEVOS ENDPOINTS: EVENTOS DEL CLUB
+# ==========================================
+
+# 25. Listar eventos del club
+@router.get("/{club_id}/events", response_model=list[EventResponse])
+def list_club_events(
+    club_id: int,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    club = db.query(Club).filter(Club.id == club_id).first()
+    if not club:
+        raise HTTPException(404, "Club no encontrado")
+
+    # Requiere solo ser miembro
+    _verify_membership(club, current_user.id, db, require_leader=False)
+
+    events = db.query(ClubEvent).filter(ClubEvent.id_club == club_id).order_by(ClubEvent.date.asc()).all()
+    return events
+
+
+# 26. Crear evento
+@router.post("/{club_id}/events", response_model=EventResponse, status_code=status.HTTP_201_CREATED)
+def create_club_event(
+    club_id: int,
+    payload: EventCreate,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    club = db.query(Club).filter(Club.id == club_id).first()
+    if not club:
+        raise HTTPException(404, "Club no encontrado")
+
+    # Requiere ser el líder del club
+    _verify_membership(club, current_user.id, db, require_leader=True)
+
+    event = ClubEvent(
+        id_club=club_id,
+        id_author=current_user.id,
+        title=payload.title,
+        description=payload.description,
+        date=payload.date,
+        latitude=payload.latitude,
+        longitude=payload.longitude,
+    )
+    db.add(event)
+    db.commit()
+    db.refresh(event)
+    return event
+
+
+# 27. Editar evento
+@router.patch("/{club_id}/events/{event_id}", response_model=EventResponse)
+def update_club_event(
+    club_id: int,
+    event_id: int,
+    payload: EventUpdate,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    club = db.query(Club).filter(Club.id == club_id).first()
+    if not club:
+        raise HTTPException(404, "Club no encontrado")
+
+    # Requiere ser el líder del club
+    _verify_membership(club, current_user.id, db, require_leader=True)
+
+    event = db.query(ClubEvent).filter(
+        ClubEvent.id == event_id, 
+        ClubEvent.id_club == club_id
+    ).first()
+    
+    if not event:
+        raise HTTPException(404, "Evento no encontrado")
+
+    # Actualizar solo los campos que fueron enviados en el request
+    if "title" in payload.model_fields_set and payload.title is not None:
+        event.title = payload.title
+        
+    if "description" in payload.model_fields_set:
+        event.description = payload.description
+        
+    if "date" in payload.model_fields_set and payload.date is not None:
+        event.date = payload.date
+        
+    if "latitude" in payload.model_fields_set:
+        event.latitude = payload.latitude
+        
+    if "longitude" in payload.model_fields_set:
+        event.longitude = payload.longitude
+
+    db.commit()
+    db.refresh(event)
+    return event
+
+
+# 28. Eliminar evento
+@router.delete("/{club_id}/events/{event_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_club_event(
+    club_id: int,
+    event_id: int,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    club = db.query(Club).filter(Club.id == club_id).first()
+    if not club:
+        raise HTTPException(404, "Club no encontrado")
+
+    # Requiere ser el líder del club
+    _verify_membership(club, current_user.id, db, require_leader=True)
+
+    event = db.query(ClubEvent).filter(
+        ClubEvent.id == event_id, 
+        ClubEvent.id_club == club_id
+    ).first()
+    
+    if not event:
+        raise HTTPException(404, "Evento no encontrado")
+
+    db.delete(event)
+    db.commit()
+    return None
