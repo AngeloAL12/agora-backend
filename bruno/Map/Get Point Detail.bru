@@ -1,0 +1,24 @@
+meta {
+  name: Get Point Detail
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{base_url}}/map/points/{{point_id}}
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{auth_token}}
+}
+
+vars:pre-request {
+  point_id: 1
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}
