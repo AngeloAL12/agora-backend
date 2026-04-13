@@ -157,6 +157,7 @@ async def get_my_complaints(
             id=complaint.id,
             type=complaint.type,
             title=complaint.title,
+            description=complaint.description,
             status=complaint.status,
             created_at=complaint.created_at,
         )

@@ -129,6 +129,7 @@ def test_get_my_complaints_returns_only_owned_items(db, clear_dependency_overrid
     assert response.status_code == 200
     assert len(response.json()) == 1
     assert response.json()[0]["title"] == "Mi queja"
+    assert response.json()[0]["description"] == "Detalle"
 
 
 def test_get_my_complaint_detail_returns_owned_complaint(
