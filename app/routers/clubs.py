@@ -22,10 +22,7 @@ router = APIRouter(prefix="/clubs", tags=["clubs"])
 
 # --- Helper de validación de membresía para eventos ---
 def _verify_membership(
-    club: Club,
-    user_id: int,
-    db: Session,
-    require_leader: bool = False
+    club: Club, user_id: int, db: Session, require_leader: bool = False
 ):
     if require_leader:
         if club.id_leader != user_id:
@@ -255,7 +252,7 @@ def list_club_events(
 @router.post(
     "/{club_id}/events",
     response_model=EventResponse,
-    status_code=status.HTTP_201_CREATED
+    status_code=status.HTTP_201_CREATED,
 )
 def create_club_event(
     club_id: int,
