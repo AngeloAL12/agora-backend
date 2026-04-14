@@ -6,7 +6,7 @@ meta {
 
 post {
   url: {{base_url}}/complaints/{{complaint_id}}/evidence
-  body: json
+  body: multipartForm
   auth: bearer
 }
 
@@ -14,11 +14,8 @@ auth:bearer {
   token: {{auth_token}}
 }
 
-body:json {
-  {
-    "file_url": "...", 
-    "type": "image"
-  }
+body:multipart-form {
+  file: 
 }
 
 vars:pre-request {

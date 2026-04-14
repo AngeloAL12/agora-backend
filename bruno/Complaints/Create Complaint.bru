@@ -6,12 +6,22 @@ meta {
 
 post {
   url: {{base_url}}/complaints
-  body: json
+  body: multipartForm
   auth: bearer
 }
 
 auth:bearer {
   token: {{auth_token}}
+}
+
+body:multipart-form {
+  title: 
+  description: 
+  category: 
+  type: 
+  id_building: 
+  classroom: 
+  images: 
 }
 
 settings {
