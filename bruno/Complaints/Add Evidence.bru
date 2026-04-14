@@ -26,3 +26,14 @@ settings {
   encodeUrl: true
   timeout: 0
 }
+
+docs {
+  # Agregar Evidencia a Queja
+  Permite al staff administrativo subir un archivo (foto/documento) como evidencia de que la queja ha sido atendida o resuelta.
+  
+  ## Parámetros de Ruta
+  - `complaint_id`: ID de la queja a la cual se le añadirá evidencia.
+  
+  ## Cuerpo (Multipart)
+  - `file`: Archivo de evidencia.
+}
