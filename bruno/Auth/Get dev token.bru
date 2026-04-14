@@ -5,13 +5,14 @@ meta {
 }
 
 get {
-  url: {{base_url}}/auth/dev-token?testing_secret=pruebas
+  url: {{base_url}}/auth/dev-token?testing_secret=pruebas&user_id=1
   body: none
   auth: bearer
 }
 
 params:query {
   testing_secret: pruebas
+  user_id: 1
 }
 
 auth:bearer {
