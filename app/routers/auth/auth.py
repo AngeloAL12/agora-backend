@@ -137,7 +137,7 @@ def microsoft_mobile_login(request_data: TokenRequest, db: Session = Depends(get
         claims = _verify_microsoft_token(
             request_data.token,
             settings.MICROSOFT_CLIENT_ID,
-            "common",  # Reemplazado temporalmente (antes era: MICROSOFT_TENANT_ID)
+            settings.MICROSOFT_TENANT_ID,
         )
         email = (
             claims.get("preferred_username") or claims.get("email") or claims.get("upn")
@@ -146,6 +146,14 @@ def microsoft_mobile_login(request_data: TokenRequest, db: Session = Depends(get
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Acceso denegado. No se encontró un correo válido.",
+            )
+        if not email.endswith("@mexicali.tecnm.mx"):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=(
+                    "Acceso denegado. Se requiere correo institucional "
+                    "(@mexicali.tecnm.mx)"
+                ),
             )
     except JWTError as err:
         raise HTTPException(
