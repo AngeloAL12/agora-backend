@@ -6,8 +6,28 @@ meta {
 
 post {
   url: {{base_url}}/auth/microsoft/mobile-login
-  body: none
+  body: json
   auth: inherit
+}
+
+body:json {
+  {
+    "token": "{{microsoft_id_token}}"
+  }
+}
+
+script:post-response {
+  if (res.getStatus() === 200) {
+    const body = res.getBody();
+
+    if (body.access_token) {
+      bru.setEnvVar("auth_token", body.access_token);
+    }
+
+    if (body.refresh_token) {
+      bru.setEnvVar("refresh_token", body.refresh_token);
+    }
+  }
 }
 
 settings {
@@ -18,7 +38,7 @@ settings {
 docs {
   # Inicio de Sesión Microsoft Mobile
   Procesa el inicio de sesión desde la aplicación móvil utilizando el SDK de Microsoft.
-  
+
   ## Nota
-  Este endpoint suele esperar el token enviado desde el dispositivo móvil para validar la identidad con Microsoft.
+  Este endpoint espera un `token` de Microsoft y devuelve `access_token` y `refresh_token`.
 }
