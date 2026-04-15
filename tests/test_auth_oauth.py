@@ -144,6 +144,18 @@ def test_microsoft_login_invalid_token(mock_verify, db):
     assert response.status_code == 401
 
 
+@patch("app.routers.auth.auth._verify_microsoft_token")
+def test_microsoft_login_invalid_domain(mock_verify, db):
+    mock_verify.return_value = {
+        "email": "hacker@gmail.com",
+        "name": "Hacker",
+        "sub": "ms-bad",
+    }
+    response = client.post("/auth/microsoft/mobile-login", json={"token": "fake-token"})
+    assert response.status_code == 403
+    assert "@mexicali.tecnm.mx" in response.json()["detail"]
+
+
 @patch("app.routers.auth.auth.verify_and_save_user")
 @patch("google.oauth2.id_token.verify_oauth2_token")
 def test_google_login_role_not_found_error(mock_verify, mock_save_user, db):
