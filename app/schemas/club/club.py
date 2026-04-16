@@ -1,20 +1,13 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
 
 
-class ClubCreate(BaseModel):
-    name: str = Field(..., min_length=1, max_length=255)
-    description: str = Field(..., min_length=1, max_length=250)
-    id_category: int
-    image: str | None = Field(default=None, max_length=500)
+class ClubCategoryResponse(BaseModel):
+    id: int
+    name: str
 
-
-class ClubUpdate(BaseModel):
-    name: str | None = Field(default=None, min_length=1, max_length=255)
-    description: str | None = Field(default=None, min_length=1, max_length=250)
-    id_category: int | None = None
-    image: str | None = Field(default=None, max_length=500)
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ClubResponse(BaseModel):

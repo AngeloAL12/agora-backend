@@ -1,9 +1,19 @@
-from typing import cast
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    UploadFile,
+    status,
+)
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.club.club import Club
@@ -11,13 +21,36 @@ from app.models.club.club_category import ClubCategory
 from app.models.club.club_member import ClubMember
 from app.schemas.auth.auth import CurrentUser
 from app.schemas.club.club import (
-    ClubCreate,
+    ClubCategoryResponse,
     ClubDetailResponse,
     ClubResponse,
-    ClubUpdate,
 )
+from app.services.storage_service import storage_service
 
 router = APIRouter(prefix="/clubs", tags=["clubs"])
+
+
+def _clean_required_text(value: str, field_name: str) -> str:
+    cleaned = value.strip()
+    if not cleaned:
+        raise HTTPException(
+            status_code=400,
+            detail=f"El campo {field_name} no puede contener solo espacios en blanco",
+        )
+    return cleaned
+
+
+def _clean_optional_text(value: str | None, field_name: str) -> str | None:
+    if value is None:
+        return None
+
+    cleaned = value.strip()
+    if not cleaned:
+        raise HTTPException(
+            status_code=400,
+            detail=f"El campo {field_name} no puede contener solo espacios en blanco",
+        )
+    return cleaned
 
 
 @router.get("", response_model=list[ClubResponse])
@@ -27,6 +60,11 @@ def get_clubs(
     db: Session = Depends(get_db),
 ):
     return db.query(Club).offset(skip).limit(limit).all()
+
+
+@router.get("/categories", response_model=list[ClubCategoryResponse])
+def get_club_categories(db: Session = Depends(get_db)):
+    return db.query(ClubCategory).order_by(ClubCategory.name.asc()).all()
 
 
 @router.get("/{club_id}", response_model=ClubDetailResponse)
@@ -43,27 +81,43 @@ def get_club(club_id: int, db: Session = Depends(get_db)):
     )
 
 
-@router.post("", response_model=ClubResponse)
-def create_club(
-    payload: ClubCreate,
+@router.post(
+    "",
+    response_model=ClubResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_club(
+    name: Annotated[str, Form(...)],
+    description: Annotated[str, Form(...)],
+    id_category: Annotated[int, Form(...)],
+    image: Annotated[UploadFile | None, File()] = None,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_current_user),
 ):
-    existing = db.query(Club).filter(Club.name == payload.name).first()
+    clean_name = _clean_required_text(name, "name")
+    clean_description = _clean_required_text(description, "description")
+
+    existing = db.query(Club).filter(Club.name == clean_name).first()
     if existing:
         raise HTTPException(400, "Nombre de club ya existe")
 
-    category = (
-        db.query(ClubCategory).filter(ClubCategory.id == payload.id_category).first()
-    )
+    category = db.query(ClubCategory).filter(ClubCategory.id == id_category).first()
     if not category:
         raise HTTPException(400, "Categoría inválida")
 
+    image_key = None
+    if image is not None and image.filename:
+        image_key = await storage_service.upload_file(
+            file=image,
+            bucket_name=settings.R2_BUCKET_PUBLIC,
+            prefix="clubs/images",
+        )
+
     club = Club(
-        name=payload.name,
-        description=payload.description,
-        image=payload.image,
-        id_category=payload.id_category,
+        name=clean_name,
+        description=clean_description,
+        image=image_key,
+        id_category=id_category,
         id_leader=current_user.id,
     )
 
@@ -88,9 +142,12 @@ def create_club(
 
 
 @router.patch("/{club_id}", response_model=ClubResponse)
-def update_club(
+async def update_club(
     club_id: int,
-    payload: ClubUpdate,
+    name: Annotated[str | None, Form()] = None,
+    description: Annotated[str | None, Form()] = None,
+    id_category: Annotated[int | None, Form()] = None,
+    image: Annotated[UploadFile | None, File()] = None,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_current_user),
 ):
@@ -102,36 +159,29 @@ def update_club(
     if club.id_leader != current_user.id:
         raise HTTPException(403, "Solo el líder puede editar")
 
-    if "name" in payload.model_fields_set:
-        name = payload.name
-        if name is None:
-            raise HTTPException(400, "El nombre no puede ser null")
-
-        existing = db.query(Club).filter(Club.name == name).first()
+    if name is not None:
+        clean_name = _clean_optional_text(name, "name")
+        existing = db.query(Club).filter(Club.name == clean_name).first()
         if existing and existing.id != club.id:
             raise HTTPException(400, "Nombre de club ya existe")
-        club.name = cast(str, name)
+        club.name = clean_name
 
-    if "description" in payload.model_fields_set:
-        description = payload.description
-        if description is None:
-            raise HTTPException(400, "La descripción no puede ser null")
+    if description is not None:
+        clean_description = _clean_optional_text(description, "description")
+        club.description = clean_description
 
-        club.description = cast(str, description)
-
-    if "image" in payload.model_fields_set:
-        club.image = payload.image
-
-    if "id_category" in payload.model_fields_set:
-        category_id = payload.id_category
-        if category_id is None:
-            raise HTTPException(400, "Categoría inválida")
-
-        category = db.query(ClubCategory).filter(ClubCategory.id == category_id).first()
+    if id_category is not None:
+        category = db.query(ClubCategory).filter(ClubCategory.id == id_category).first()
         if not category:
             raise HTTPException(400, "Categoría inválida")
+        club.id_category = id_category
 
-        club.id_category = cast(int, category_id)
+    if image is not None and image.filename:
+        club.image = await storage_service.upload_file(
+            file=image,
+            bucket_name=settings.R2_BUCKET_PUBLIC,
+            prefix="clubs/images",
+        )
 
     db.commit()
     db.refresh(club)
