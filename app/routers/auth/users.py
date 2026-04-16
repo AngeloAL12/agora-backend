@@ -1,5 +1,8 @@
+from datetime import datetime
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
@@ -23,6 +26,18 @@ class UserMeResponse(BaseModel):
     likes_count: int
     career: str | None
     photo: str | None
+
+
+class UserListResponse(BaseModel):
+    id: int
+    email: str
+    name: str
+    photo: str | None
+    is_active: bool
+    id_role: int
+    created_at: datetime | Any = Field(..., description="Creation timestamp")
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 @router.get("/me", response_model=UserMeResponse)
@@ -89,6 +104,15 @@ def update_my_career(
     db.commit()
 
     return {"id_career": user.id_career}
+
+
+@router.get("", response_model=list[UserListResponse])
+def get_all_users(
+    _: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    users = db.execute(select(User).order_by(User.created_at.desc())).scalars().all()
+    return users
 
 
 @router.get("/admin")

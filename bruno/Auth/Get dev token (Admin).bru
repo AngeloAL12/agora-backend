@@ -1,0 +1,47 @@
+meta {
+  name: Get dev token (Admin)
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{base_url}}/auth/dev-token
+  body: none
+  auth: none
+}
+
+params:query {
+  testing_secret: pruebas
+  user_id: 1
+}
+
+script:post-response {
+  if (res.getStatus() === 200) {
+    const body = res.getBody();
+    bru.setEnvVar("admin_token", body.access_token);
+    console.log("Admin token guardado: ", body.access_token);
+  }
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}
+
+docs {
+  # Obtener Token de Administrador
+  Genera un token de acceso para el usuario administrador.
+
+  ## Instrucciones
+  1. Cambia el query param `user_id` al ID del usuario con rol `admin` en tu DB.
+  2. Ejecuta el request — el token se guarda en `{{admin_token}}`.
+  3. Usa `{{admin_token}}` en requests que requieran permisos de Admin.
+
+  ## Consulta para obtener el ID del admin
+  ```sql
+  SELECT u.id, u.email, r.name AS role
+  FROM "user" u
+  JOIN role r ON u.id_role = r.id
+  WHERE r.name = 'admin';
+  ```
+}

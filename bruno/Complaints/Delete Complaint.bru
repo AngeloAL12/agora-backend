@@ -1,0 +1,38 @@
+meta {
+  name: Delete Complaint
+  type: http
+  seq: 8
+}
+
+delete {
+  url: {{base_url}}/complaints/{{complaint_id}}
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{auth_token}}
+}
+
+vars:pre-request {
+  complaint_id: 7
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}
+
+docs {
+  # Eliminar Queja
+  Elimina una queja por su ID.
+
+  ## Permisos
+  - El propietario de la queja puede eliminarla.
+  - Usuarios con rol Staff o Admin también pueden eliminarla.
+
+  ## Respuesta
+  - **204 No Content** si se eliminó correctamente.
+  - **403 Forbidden** si el usuario no tiene permiso.
+  - **404 Not Found** si la queja no existe.
+}
