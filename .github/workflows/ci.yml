@@ -29,7 +29,7 @@ jobs:
       R2_SECRET_ACCESS_KEY: test-secret
       R2_BUCKET_PRIVATE: test-private
       R2_BUCKET_PUBLIC: test-public
-
+      R2_PUBLIC_URL: https://pub-test.r2.dev
     steps:
       - uses: actions/checkout@v4
 
