@@ -15,3 +15,8 @@ from app.models.complaint import (  # noqa: F401
     ComplaintImage,
     ComplaintStatusHistory,
 )
+from app.models.notification import (  # noqa: F401
+    Notification,
+    NotificationCategory,
+    NotificationEventType,
+)

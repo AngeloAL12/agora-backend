@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from app.models.complaint.complaint import Complaint
     from app.models.complaint.complaint_evidence import ComplaintEvidence
     from app.models.complaint.complaint_status_history import ComplaintStatusHistory
+    from app.models.notification.notification import Notification
 
 
 class User(Base):
@@ -66,3 +67,6 @@ class User(Base):
     )
     clubs_led: Mapped[list["Club"]] = relationship(back_populates="leader")
     club_memberships: Mapped[list["ClubMember"]] = relationship(back_populates="user")
+    notifications: Mapped[list["Notification"]] = relationship(
+        "Notification", back_populates="user", cascade="all, delete-orphan"
+    )
