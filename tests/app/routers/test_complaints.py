@@ -622,3 +622,55 @@ def test_update_complaint_forbidden_for_other_user(db, clear_dependency_override
     )
 
     assert response.status_code == 403
+
+
+def test_update_complaint_empty_title_returns_400(db, clear_dependency_overrides):
+    user = _create_user(
+        db, RoleName.USER, "patch_empty_t@itmexicali.edu.mx", "patch-empty-t"
+    )
+    _override_current_user(user.id)
+
+    complaint = Complaint(
+        id_user=user.id,
+        title="Título original",
+        description="Descripción original",
+        category=ComplaintCategory.ACADEMIC,
+        status=ComplaintStatus.PENDING,
+    )
+    db.add(complaint)
+    db.commit()
+
+    client = TestClient(app)
+    response = client.patch(
+        f"/complaints/{complaint.id}",
+        json={"title": "   "},
+    )
+
+    assert response.status_code == 400
+    assert "título" in response.json()["detail"].lower()
+
+
+def test_update_complaint_empty_description_returns_400(db, clear_dependency_overrides):
+    user = _create_user(
+        db, RoleName.USER, "patch_empty_d@itmexicali.edu.mx", "patch-empty-d"
+    )
+    _override_current_user(user.id)
+
+    complaint = Complaint(
+        id_user=user.id,
+        title="Título original",
+        description="Descripción original",
+        category=ComplaintCategory.ACADEMIC,
+        status=ComplaintStatus.PENDING,
+    )
+    db.add(complaint)
+    db.commit()
+
+    client = TestClient(app)
+    response = client.patch(
+        f"/complaints/{complaint.id}",
+        json={"description": "   "},
+    )
+
+    assert response.status_code == 400
+    assert "descripción" in response.json()["detail"].lower()

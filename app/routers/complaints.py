@@ -362,9 +362,21 @@ async def update_complaint(
         )
 
     if body.title is not None:
-        complaint.title = body.title.strip()
+        title_clean = body.title.strip()
+        if not title_clean:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="El título no puede estar vacío",
+            )
+        complaint.title = title_clean
     if body.description is not None:
-        complaint.description = body.description.strip()
+        description_clean = body.description.strip()
+        if not description_clean:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="La descripción no puede estar vacía",
+            )
+        complaint.description = description_clean
 
     db.commit()
     db.refresh(complaint)
