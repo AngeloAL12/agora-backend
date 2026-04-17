@@ -32,7 +32,7 @@ class StorageService:
         try:
             async with self._session.client(
                 "s3", endpoint_url=self._endpoint_url
-            ) as s3:
+            ) as s3:  # type: ignore
                 await s3.upload_fileobj(
                     file.file,
                     bucket_name,
@@ -48,6 +48,22 @@ class StorageService:
                 detail="Ocurrió un error al subir el archivo a la nube.",
             ) from e
 
+    async def delete_file(self, bucket_name: str, object_key: str) -> None:
+        """
+        Elimina un objeto de R2 dado su bucket y object key.
+        """
+        try:
+            async with self._session.client(
+                "s3", endpoint_url=self._endpoint_url
+            ) as s3:  # type: ignore
+                await s3.delete_object(Bucket=bucket_name, Key=object_key)
+        except ClientError as e:
+            logger.error(f"Error eliminando archivo en R2: {e}")
+            raise HTTPException(
+                status_code=500,
+                detail="Ocurrió un error al eliminar el archivo anterior en la nube.",
+            ) from e
+
     async def get_presigned_url(
         self, bucket_name: str, object_key: str, expiration: int = 3600
     ) -> str:
@@ -58,7 +74,7 @@ class StorageService:
         try:
             async with self._session.client(
                 "s3", endpoint_url=self._endpoint_url
-            ) as s3:
+            ) as s3:  # type: ignore
                 url = await s3.generate_presigned_url(
                     ClientMethod="get_object",
                     Params={"Bucket": bucket_name, "Key": object_key},

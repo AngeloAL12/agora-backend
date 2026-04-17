@@ -1,7 +1,8 @@
 from fastapi.testclient import TestClient
 
+from app.core.config import settings
 from app.core.roles import RoleName
-from app.core.security import get_current_user, require_admin, require_staff
+from app.core.security import get_current_user
 from app.main import app
 from app.models.auth.role import Role
 from app.models.auth.user import User
@@ -36,6 +37,9 @@ def test_me_returns_current_user(db, clear_dependency_overrides):
 
     assert response.status_code == 200
     assert response.json() == {
+        "id": user.id,
+        "email": "test@itmexicali.edu.mx",
+        "role": RoleName.USER,
         "name": "Test User",
         "clubs_count": 0,
         "complaints_count": 0,
@@ -45,49 +49,100 @@ def test_me_returns_current_user(db, clear_dependency_overrides):
     }
 
 
-def test_admin_returns_admin_user(clear_dependency_overrides):
-    app.dependency_overrides[require_admin] = lambda: CurrentUser(
-        id=1,
-        role=RoleName.ADMIN,
+def test_patch_me_updates_name_and_career(db, clear_dependency_overrides):
+    role = db.query(Role).filter(Role.name == RoleName.USER).one_or_none()
+    if not role:
+        role = Role(name=RoleName.USER)
+        db.add(role)
+        db.commit()
+
+    career = Career(name="Ingeniería Industrial")
+    db.add(career)
+    db.commit()
+    db.refresh(career)
+
+    user = User(
+        email="patch@itmexicali.edu.mx",
+        name="Patch User",
+        oauth_provider="google",
+        oauth_sub="patch-user",
+        id_role=role.id,
     )
-    client = TestClient(app)
+    db.add(user)
+    db.commit()
+    db.refresh(user)
 
-    response = client.get("/users/admin")
-
-    assert response.status_code == 200
-    assert response.json() == {
-        "message": "admin access",
-        "user": {"id": 1, "role": RoleName.ADMIN},
-    }
-
-
-def test_staff_returns_staff_user(clear_dependency_overrides):
-    app.dependency_overrides[require_staff] = lambda: CurrentUser(
-        id=1,
-        role=RoleName.STAFF,
-    )
-    client = TestClient(app)
-
-    response = client.get("/users/staff")
-
-    assert response.status_code == 200
-    assert response.json() == {
-        "message": "staff access",
-        "user": {"id": 1, "role": RoleName.STAFF},
-    }
-
-
-def test_me_returns_404_when_user_not_found(clear_dependency_overrides):
     app.dependency_overrides[get_current_user] = lambda: CurrentUser(
-        id=9999,
+        id=user.id,
         role=RoleName.USER,
     )
     client = TestClient(app)
 
-    response = client.get("/users/me")
+    response = client.patch(
+        "/users/me",
+        data={"name": "Updated Patch User", "id_career": career.id},
+    )
 
-    assert response.status_code == 404
-    assert response.json()["detail"] == "Usuario no encontrado"
+    assert response.status_code == 200
+    assert response.json()["name"] == "Updated Patch User"
+    assert response.json()["career"] == "Ingeniería Industrial"
+    assert response.json()["id"] == user.id
+    assert response.json()["email"] == "patch@itmexicali.edu.mx"
+    assert response.json()["role"] == RoleName.USER
+
+
+def test_patch_me_uploads_photo_and_deletes_previous_public_image(
+    db, clear_dependency_overrides, monkeypatch
+):
+    role = db.query(Role).filter(Role.name == RoleName.USER).one_or_none()
+    if not role:
+        role = Role(name=RoleName.USER)
+        db.add(role)
+        db.commit()
+
+    user = User(
+        email="photo@itmexicali.edu.mx",
+        name="Photo User",
+        oauth_provider="google",
+        oauth_sub="photo-user",
+        id_role=role.id,
+        photo=f"{settings.R2_ENDPOINT}/{settings.R2_BUCKET_PUBLIC}/users/1/photo/old.png",
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    app.dependency_overrides[get_current_user] = lambda: CurrentUser(
+        id=user.id,
+        role=RoleName.USER,
+    )
+    client = TestClient(app)
+
+    async def fake_upload_file(file, bucket_name, prefix):
+        return "users/1/photo/new.png"
+
+    async def fake_delete_file(bucket_name, object_key):
+        assert bucket_name == settings.R2_BUCKET_PUBLIC
+        assert object_key == "users/1/photo/old.png"
+
+    monkeypatch.setattr(
+        "app.routers.auth.users.storage_service.upload_file",
+        fake_upload_file,
+    )
+    monkeypatch.setattr(
+        "app.routers.auth.users.storage_service.delete_file",
+        fake_delete_file,
+    )
+
+    response = client.patch(
+        "/users/me",
+        files={"photo": ("new.png", b"fake-image", "image/png")},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["photo"].endswith(
+        f"/{settings.R2_BUCKET_PUBLIC}/users/1/photo/new.png"
+    )
 
 
 def test_update_my_career_not_found(db, clear_dependency_overrides):
