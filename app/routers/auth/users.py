@@ -103,15 +103,32 @@ async def update_my_profile(
             settings.R2_BUCKET_PUBLIC,
             f"users/{user.id}/photo",
         )
-        user.photo = f"{settings.R2_ENDPOINT}/{settings.R2_BUCKET_PUBLIC}/{object_key}"
+        base_public_url = (
+            settings.R2_PUBLIC_URL
+            if settings.R2_PUBLIC_URL
+            else f"{settings.R2_ENDPOINT}/{settings.R2_BUCKET_PUBLIC}"
+        )
+        # Ensure no trailing slash before appending object_key
+        base_public_url = base_public_url.rstrip("/")
+        user.photo = f"{base_public_url}/{object_key}"
 
-        if previous_photo and previous_photo.startswith(
-            f"{settings.R2_ENDPOINT}/{settings.R2_BUCKET_PUBLIC}/"
-        ):
-            old_key = previous_photo.split(
-                f"{settings.R2_ENDPOINT}/{settings.R2_BUCKET_PUBLIC}/", 1
-            )[1]
-            await storage_service.delete_file(settings.R2_BUCKET_PUBLIC, old_key)
+        if previous_photo:
+            old_key = None
+            if settings.R2_PUBLIC_URL and previous_photo.startswith(
+                f"{settings.R2_PUBLIC_URL.rstrip('/')}/"
+            ):
+                old_key = previous_photo.split(
+                    f"{settings.R2_PUBLIC_URL.rstrip('/')}/", 1
+                )[1]
+            elif previous_photo.startswith(
+                f"{settings.R2_ENDPOINT}/{settings.R2_BUCKET_PUBLIC}/"
+            ):
+                old_key = previous_photo.split(
+                    f"{settings.R2_ENDPOINT}/{settings.R2_BUCKET_PUBLIC}/", 1
+                )[1]
+
+            if old_key:
+                await storage_service.delete_file(settings.R2_BUCKET_PUBLIC, old_key)
 
     db.commit()
     db.refresh(user)
