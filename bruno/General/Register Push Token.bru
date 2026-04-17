@@ -7,7 +7,11 @@ meta {
 post {
   url: {{base_url}}/push-token
   body: json
-  auth: inherit
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{base_url}}
 }
 
 body:json {
@@ -19,4 +23,12 @@ body:json {
 settings {
   encodeUrl: true
   timeout: 0
+}
+
+docs {
+  # Registro de Token de Notificaciones Push
+  Registra o actualiza el token de Firebase Cloud Messaging (FCM) para el usuario autenticado.
+  
+  ## Parámetros del Body
+  - `token`: El token de registro del dispositivo proporcionado por Firebase.
 }

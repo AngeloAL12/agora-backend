@@ -6,7 +6,12 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.core.roles import RoleName
 from app.core.security import get_current_user
-from app.models.complaint.complaint import Complaint, ComplaintCategory, ComplaintStatus
+from app.models.complaint.complaint import (
+    Complaint,
+    ComplaintCategory,
+    ComplaintStatus,
+    ComplaintType,
+)
 from app.models.complaint.complaint_evidence import ComplaintEvidence
 from app.models.complaint.complaint_image import ComplaintImage
 from app.models.complaint.complaint_status_history import ComplaintStatusHistory
@@ -38,9 +43,12 @@ async def _serialize_complaint(complaint: Complaint) -> ComplaintResponse:
 
     return ComplaintResponse(
         id=complaint.id,
+        type=complaint.type,
         title=complaint.title,
         description=complaint.description,
         category=complaint.category,
+        id_building=complaint.id_building,
+        classroom=complaint.classroom,
         status=complaint.status,
         has_appealed=complaint.has_appealed,
         created_at=complaint.created_at,
@@ -57,6 +65,9 @@ async def create_complaint(
     title: str = Form(...),
     description: str = Form(...),
     category: ComplaintCategory = Form(...),
+    type: ComplaintType = Form(default=ComplaintType.REPORT),
+    id_building: int | None = Form(default=None),
+    classroom: str | None = Form(default=None),
     images: list[UploadFile] | None = File(default=None),
     current_user: CurrentUser = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -87,9 +98,12 @@ async def create_complaint(
 
     complaint = Complaint(
         id_user=current_user.id,
+        type=type,
         title=title_clean,
         description=description_clean,
         category=category,
+        id_building=id_building,
+        classroom=classroom,
         status=ComplaintStatus.PENDING,
     )
     db.add(complaint)
@@ -141,7 +155,9 @@ async def get_my_complaints(
     return [
         ComplaintListItemResponse(
             id=complaint.id,
+            type=complaint.type,
             title=complaint.title,
+            description=complaint.description,
             status=complaint.status,
             created_at=complaint.created_at,
         )

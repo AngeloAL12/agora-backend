@@ -5,13 +5,14 @@ meta {
 }
 
 get {
-  url: {{base_url}}/auth/dev-token?testing_secret=pruebas
+  url: {{base_url}}/auth/dev-token?testing_secret=pruebas&user_id=1
   body: none
   auth: bearer
 }
 
 params:query {
   testing_secret: pruebas
+  user_id: 1
 }
 
 auth:bearer {
@@ -30,4 +31,13 @@ script:post-response {
 settings {
   encodeUrl: true
   timeout: 0
+}
+
+docs {
+  # Obtener Token de Desarrollo
+  Genera un token de acceso para pruebas locales utilizando un secreto de prueba y un ID de usuario.
+  
+  ## Parámetros Query
+  - `testing_secret`: Secreto configurado para desarrollo.
+  - `user_id`: ID del usuario para el cual se generará el token.
 }
