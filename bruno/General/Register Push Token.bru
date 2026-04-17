@@ -11,12 +11,12 @@ post {
 }
 
 auth:bearer {
-  token: {{base_url}}
+  token: {{auth_token}}
 }
 
 body:json {
   {
-    "token": "..."
+    "push_token": "ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]"
   }
 }
 
@@ -27,8 +27,8 @@ settings {
 
 docs {
   # Registro de Token de Notificaciones Push
-  Registra o actualiza el token de Firebase Cloud Messaging (FCM) para el usuario autenticado.
+  Registra o actualiza el token Expo para el usuario autenticado.
   
   ## Parámetros del Body
-  - `token`: El token de registro del dispositivo proporcionado por Firebase.
+  - `push_token`: El token Expo del dispositivo (`ExponentPushToken[...]`).
 }
