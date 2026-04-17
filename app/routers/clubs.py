@@ -30,17 +30,51 @@ from app.services.storage_service import storage_service
 router = APIRouter(prefix="/clubs", tags=["clubs"])
 
 
-def _clean_required_text(value: str, field_name: str) -> str:
+def _build_image_url(image_key: str | None) -> str | None:
+    if not image_key:
+        return None
+    return f"{settings.R2_PUBLIC_URL}/{image_key}"
+
+
+def _to_club_response(club: Club) -> ClubResponse:
+    return ClubResponse.model_validate(
+        {
+            **club.__dict__,
+            "image": _build_image_url(club.image),
+        }
+    )
+
+
+def _to_club_detail_response(club: Club, members_count: int) -> ClubDetailResponse:
+    return ClubDetailResponse.model_validate(
+        {
+            **club.__dict__,
+            "image": _build_image_url(club.image),
+            "members_count": members_count,
+        }
+    )
+
+
+def _clean_required_text(value: str, field_name: str, max_length: int) -> str:
     cleaned = value.strip()
     if not cleaned:
         raise HTTPException(
             status_code=400,
             detail=f"El campo {field_name} no puede contener solo espacios en blanco",
         )
+    if len(cleaned) > max_length:
+        raise HTTPException(
+            status_code=400,
+            detail=f"El campo {field_name} no puede exceder {max_length} caracteres",
+        )
     return cleaned
 
 
-def _clean_optional_text(value: str | None, field_name: str) -> str | None:
+def _clean_optional_text(
+    value: str | None,
+    field_name: str,
+    max_length: int,
+) -> str | None:
     if value is None:
         return None
 
@@ -49,6 +83,11 @@ def _clean_optional_text(value: str | None, field_name: str) -> str | None:
         raise HTTPException(
             status_code=400,
             detail=f"El campo {field_name} no puede contener solo espacios en blanco",
+        )
+    if len(cleaned) > max_length:
+        raise HTTPException(
+            status_code=400,
+            detail=f"El campo {field_name} no puede exceder {max_length} caracteres",
         )
     return cleaned
 
@@ -59,7 +98,8 @@ def get_clubs(
     limit: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
 ):
-    return db.query(Club).offset(skip).limit(limit).all()
+    clubs = db.query(Club).offset(skip).limit(limit).all()
+    return [_to_club_response(club) for club in clubs]
 
 
 @router.get("/categories", response_model=list[ClubCategoryResponse])
@@ -76,9 +116,7 @@ def get_club(club_id: int, db: Session = Depends(get_db)):
 
     members_count = db.query(ClubMember).filter(ClubMember.id_club == club_id).count()
 
-    return ClubDetailResponse.model_validate(
-        {**club.__dict__, "members_count": members_count}
-    )
+    return _to_club_detail_response(club, members_count)
 
 
 @router.post(
@@ -94,8 +132,8 @@ async def create_club(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_current_user),
 ):
-    clean_name = _clean_required_text(name, "name")
-    clean_description = _clean_required_text(description, "description")
+    clean_name = _clean_required_text(name, "name", 255)
+    clean_description = _clean_required_text(description, "description", 250)
 
     existing = db.query(Club).filter(Club.name == clean_name).first()
     if existing:
@@ -105,18 +143,10 @@ async def create_club(
     if not category:
         raise HTTPException(400, "Categoría inválida")
 
-    image_key = None
-    if image is not None and image.filename:
-        image_key = await storage_service.upload_file(
-            file=image,
-            bucket_name=settings.R2_BUCKET_PUBLIC,
-            prefix="clubs/images",
-        )
-
     club = Club(
         name=clean_name,
         description=clean_description,
-        image=image_key,
+        image=None,
         id_category=id_category,
         id_leader=current_user.id,
     )
@@ -124,6 +154,13 @@ async def create_club(
     try:
         db.add(club)
         db.flush()
+
+        if image is not None and image.filename:
+            club.image = await storage_service.upload_file(
+                file=image,
+                bucket_name=settings.R2_BUCKET_PUBLIC,
+                prefix=f"clubs/{club.id}/images",
+            )
 
         db.add(
             ClubMember(
@@ -134,7 +171,7 @@ async def create_club(
 
         db.commit()
         db.refresh(club)
-        return club
+        return _to_club_response(club)
 
     except IntegrityError as err:
         db.rollback()
@@ -160,14 +197,14 @@ async def update_club(
         raise HTTPException(403, "Solo el líder puede editar")
 
     if name is not None:
-        clean_name = _clean_optional_text(name, "name")
+        clean_name = _clean_optional_text(name, "name", 255)
         existing = db.query(Club).filter(Club.name == clean_name).first()
         if existing and existing.id != club.id:
             raise HTTPException(400, "Nombre de club ya existe")
         club.name = clean_name
 
     if description is not None:
-        clean_description = _clean_optional_text(description, "description")
+        clean_description = _clean_optional_text(description, "description", 250)
         club.description = clean_description
 
     if id_category is not None:
@@ -177,16 +214,22 @@ async def update_club(
         club.id_category = id_category
 
     if image is not None and image.filename:
+        if club.image is not None:
+            await storage_service.delete_file(
+                bucket_name=settings.R2_BUCKET_PUBLIC,
+                object_key=club.image,
+            )
+
         club.image = await storage_service.upload_file(
             file=image,
             bucket_name=settings.R2_BUCKET_PUBLIC,
-            prefix="clubs/images",
+            prefix=f"clubs/{club.id}/images",
         )
 
     db.commit()
     db.refresh(club)
 
-    return club
+    return _to_club_response(club)
 
 
 @router.delete("/{club_id}")

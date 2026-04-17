@@ -20,10 +20,6 @@ class StorageService:
         self._endpoint_url = settings.R2_ENDPOINT
 
     async def upload_file(self, file: UploadFile, bucket_name: str, prefix: str) -> str:
-        """
-        Sube un archivo a R2 y retorna el 'Object Key' (la ruta guardada).
-        Ejemplo de prefix: "complaints/1042/images" o "clubs/12/posts/899"
-        """
         filename = file.filename or ""
         extension = filename.split(".")[-1] if "." in filename else "bin"
         unique_filename = f"{uuid.uuid4()}.{extension}"
@@ -48,13 +44,25 @@ class StorageService:
                 detail="Ocurrió un error al subir el archivo a la nube.",
             ) from e
 
+    async def delete_file(self, bucket_name: str, object_key: str) -> None:
+        try:
+            async with self._session.client(
+                "s3", endpoint_url=self._endpoint_url
+            ) as s3:
+                await s3.delete_object(
+                    Bucket=bucket_name,
+                    Key=object_key,
+                )
+        except ClientError as e:
+            logger.error(f"Error eliminando archivo de R2: {e}")
+            raise HTTPException(
+                status_code=500,
+                detail="No se pudo eliminar el archivo.",
+            ) from e
+
     async def get_presigned_url(
         self, bucket_name: str, object_key: str, expiration: int = 3600
     ) -> str:
-        """
-        Genera una URL firmada temporal para acceder a archivos del bucket privado.
-        expiration: tiempo de vida en segundos (3600 = 1 hora).
-        """
         try:
             async with self._session.client(
                 "s3", endpoint_url=self._endpoint_url
@@ -74,5 +82,4 @@ class StorageService:
             ) from e
 
 
-# Instancia global para importarla en los endpoints
 storage_service = StorageService()
