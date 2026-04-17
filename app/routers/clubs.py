@@ -70,28 +70,6 @@ def _clean_required_text(value: str, field_name: str, max_length: int) -> str:
     return cleaned
 
 
-def _clean_optional_text(
-    value: str | None,
-    field_name: str,
-    max_length: int,
-) -> str | None:
-    if value is None:
-        return None
-
-    cleaned = value.strip()
-    if not cleaned:
-        raise HTTPException(
-            status_code=400,
-            detail=f"El campo {field_name} no puede contener solo espacios en blanco",
-        )
-    if len(cleaned) > max_length:
-        raise HTTPException(
-            status_code=400,
-            detail=f"El campo {field_name} no puede exceder {max_length} caracteres",
-        )
-    return cleaned
-
-
 @router.get("", response_model=list[ClubResponse])
 def get_clubs(
     skip: int = Query(0, ge=0),
@@ -197,15 +175,14 @@ async def update_club(
         raise HTTPException(403, "Solo el líder puede editar")
 
     if name is not None:
-        clean_name = _clean_optional_text(name, "name", 255)
+        clean_name = _clean_required_text(name, "name", 255)
         existing = db.query(Club).filter(Club.name == clean_name).first()
         if existing and existing.id != club.id:
             raise HTTPException(400, "Nombre de club ya existe")
         club.name = clean_name
 
     if description is not None:
-        clean_description = _clean_optional_text(description, "description", 250)
-        club.description = clean_description
+        club.description = _clean_required_text(description, "description", 250)
 
     if id_category is not None:
         category = db.query(ClubCategory).filter(ClubCategory.id == id_category).first()

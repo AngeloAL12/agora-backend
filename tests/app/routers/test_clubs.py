@@ -4,7 +4,6 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.core.config import settings
-from app.core.database import get_db
 from app.core.roles import RoleName
 from app.core.security import get_current_user
 from app.main import app
@@ -22,16 +21,6 @@ def seed_users(db):
     ensure_user(db, 1)
     ensure_user(db, 2)
     ensure_user(db, 3)
-
-
-@pytest.fixture(autouse=True)
-def override_db(db):
-    def _get_test_db():
-        yield db
-
-    app.dependency_overrides[get_db] = _get_test_db
-    yield
-    app.dependency_overrides.pop(get_db, None)
 
 
 @pytest.fixture(autouse=True)
@@ -534,3 +523,90 @@ def test_same_leader_rejected(db):
 
     assert response.status_code == 409
     assert response.json()["detail"] == "El usuario ya es el líder actual"
+
+
+def test_update_club_only_leader(db):
+    app.dependency_overrides[get_current_user] = override_user(2)
+
+    category = create_category(db)
+    club = create_club(db, category.id, leader_id=1)
+
+    client = TestClient(app)
+    response = client.patch(f"/clubs/{club.id}", data={"name": "Nuevo Nombre"})
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Solo el líder puede editar"
+
+
+def test_update_club_not_found(db):
+    app.dependency_overrides[get_current_user] = override_user(1)
+
+    client = TestClient(app)
+    response = client.patch("/clubs/999999", data={"name": "Nuevo Nombre"})
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Club no encontrado"
+
+
+def test_delete_club_only_leader(db):
+    app.dependency_overrides[get_current_user] = override_user(2)
+
+    category = create_category(db)
+    club = create_club(db, category.id, leader_id=1)
+
+    client = TestClient(app)
+    response = client.delete(f"/clubs/{club.id}")
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Solo el líder puede eliminar"
+
+
+def test_join_club_not_found():
+    app.dependency_overrides[get_current_user] = override_user(2)
+
+    client = TestClient(app)
+    response = client.post("/clubs/999999/members")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Club no encontrado"
+
+
+def test_remove_member_only_leader(db):
+    app.dependency_overrides[get_current_user] = override_user(2)
+
+    category = create_category(db)
+    club = create_club(db, category.id, leader_id=1)
+    create_membership(db, club.id, 3)
+
+    client = TestClient(app)
+    response = client.delete(f"/clubs/{club.id}/members/3")
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Solo el líder puede expulsar"
+
+
+def test_transfer_leadership_only_leader(db):
+    app.dependency_overrides[get_current_user] = override_user(2)
+
+    category = create_category(db)
+    club = create_club(db, category.id, leader_id=1)
+    create_membership(db, club.id, 2)
+
+    client = TestClient(app)
+    response = client.patch(f"/clubs/{club.id}/members/2/leader")
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Solo el líder actual puede transferir"
+
+
+def test_transfer_leadership_requires_membership(db):
+    app.dependency_overrides[get_current_user] = override_user(1)
+
+    category = create_category(db)
+    club = create_club(db, category.id, leader_id=1)
+
+    client = TestClient(app)
+    response = client.patch(f"/clubs/{club.id}/members/2/leader")
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "El usuario destino debe ser miembro del club"
