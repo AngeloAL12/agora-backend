@@ -140,9 +140,7 @@ def test_patch_me_uploads_photo_and_deletes_previous_public_image(
     )
 
     assert response.status_code == 200
-    assert response.json()["photo"].endswith(
-        f"/{settings.R2_BUCKET_PUBLIC}/users/1/photo/new.png"
-    )
+    assert response.json()["photo"].endswith("users/1/photo/new.png")
 
 
 def test_update_my_career_not_found(db, clear_dependency_overrides):

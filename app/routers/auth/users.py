@@ -73,7 +73,13 @@ async def update_my_profile(
     db: Session = Depends(get_db),
 ):
     user = db.execute(
-        select(User).where(User.id == current_user.id)
+        select(User)
+        .options(
+            selectinload(User.career),
+            selectinload(User.club_memberships),
+            selectinload(User.complaints),
+        )
+        .where(User.id == current_user.id)
     ).scalar_one_or_none()
 
     if not user:
@@ -96,8 +102,8 @@ async def update_my_profile(
     if name is not None:
         user.name = name.strip() or user.name
 
+    previous_photo = user.photo
     if photo is not None:
-        previous_photo = user.photo
         object_key = await storage_service.upload_file(
             photo,
             settings.R2_BUCKET_PUBLIC,
@@ -112,26 +118,26 @@ async def update_my_profile(
         base_public_url = base_public_url.rstrip("/")
         user.photo = f"{base_public_url}/{object_key}"
 
-        if previous_photo:
-            old_key = None
-            if settings.R2_PUBLIC_URL and previous_photo.startswith(
-                f"{settings.R2_PUBLIC_URL.rstrip('/')}/"
-            ):
-                old_key = previous_photo.split(
-                    f"{settings.R2_PUBLIC_URL.rstrip('/')}/", 1
-                )[1]
-            elif previous_photo.startswith(
-                f"{settings.R2_ENDPOINT}/{settings.R2_BUCKET_PUBLIC}/"
-            ):
-                old_key = previous_photo.split(
-                    f"{settings.R2_ENDPOINT}/{settings.R2_BUCKET_PUBLIC}/", 1
-                )[1]
-
-            if old_key:
-                await storage_service.delete_file(settings.R2_BUCKET_PUBLIC, old_key)
-
     db.commit()
     db.refresh(user)
+
+    if photo is not None and previous_photo:
+        old_key = None
+        if settings.R2_PUBLIC_URL and previous_photo.startswith(
+            f"{settings.R2_PUBLIC_URL.rstrip('/')}/"
+        ):
+            old_key = previous_photo.split(f"{settings.R2_PUBLIC_URL.rstrip('/')}/", 1)[
+                1
+            ]
+        elif previous_photo.startswith(
+            f"{settings.R2_ENDPOINT}/{settings.R2_BUCKET_PUBLIC}/"
+        ):
+            old_key = previous_photo.split(
+                f"{settings.R2_ENDPOINT}/{settings.R2_BUCKET_PUBLIC}/", 1
+            )[1]
+
+        if old_key:
+            await storage_service.delete_file(settings.R2_BUCKET_PUBLIC, old_key)
 
     return {
         "id": user.id,

@@ -59,10 +59,6 @@ class StorageService:
                 await s3.delete_object(Bucket=bucket_name, Key=object_key)
         except ClientError as e:
             logger.error(f"Error eliminando archivo en R2: {e}")
-            raise HTTPException(
-                status_code=500,
-                detail="Ocurrió un error al eliminar el archivo anterior en la nube.",
-            ) from e
 
     async def get_presigned_url(
         self, bucket_name: str, object_key: str, expiration: int = 3600
