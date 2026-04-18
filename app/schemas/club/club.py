@@ -14,7 +14,10 @@ class ClubResponse(BaseModel):
     id: int
     name: str
     description: str
-    image: str | None
+
+    profile_image: str | None
+    cover_image: str | None
+
     id_category: int
     id_leader: int
     created_at: datetime

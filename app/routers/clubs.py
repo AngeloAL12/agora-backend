@@ -40,7 +40,8 @@ def _to_club_response(club: Club) -> ClubResponse:
     return ClubResponse.model_validate(
         {
             **club.__dict__,
-            "image": _build_image_url(club.image),
+            "profile_image": _build_image_url(club.profile_image),
+            "cover_image": _build_image_url(club.cover_image),
         }
     )
 
@@ -49,7 +50,8 @@ def _to_club_detail_response(club: Club, members_count: int) -> ClubDetailRespon
     return ClubDetailResponse.model_validate(
         {
             **club.__dict__,
-            "image": _build_image_url(club.image),
+            "profile_image": _build_image_url(club.profile_image),
+            "cover_image": _build_image_url(club.cover_image),
             "members_count": members_count,
         }
     )
@@ -106,7 +108,8 @@ async def create_club(
     name: Annotated[str, Form(...)],
     description: Annotated[str, Form(...)],
     id_category: Annotated[int, Form(...)],
-    image: Annotated[UploadFile | None, File()] = None,
+    profile_image: Annotated[UploadFile | None, File()] = None,
+    cover_image: Annotated[UploadFile | None, File()] = None,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_current_user),
 ):
@@ -124,7 +127,8 @@ async def create_club(
     club = Club(
         name=clean_name,
         description=clean_description,
-        image=None,
+        profile_image=None,
+        cover_image=None,
         id_category=id_category,
         id_leader=current_user.id,
     )
@@ -133,11 +137,18 @@ async def create_club(
         db.add(club)
         db.flush()
 
-        if image is not None and image.filename:
-            club.image = await storage_service.upload_file(
-                file=image,
+        if profile_image is not None and profile_image.filename:
+            club.profile_image = await storage_service.upload_file(
+                file=profile_image,
                 bucket_name=settings.R2_BUCKET_PUBLIC,
-                prefix=f"clubs/{club.id}/images",
+                prefix=f"clubs/{club.id}/profile",
+            )
+
+        if cover_image is not None and cover_image.filename:
+            club.cover_image = await storage_service.upload_file(
+                file=cover_image,
+                bucket_name=settings.R2_BUCKET_PUBLIC,
+                prefix=f"clubs/{club.id}/cover",
             )
 
         db.add(
@@ -162,7 +173,8 @@ async def update_club(
     name: Annotated[str | None, Form()] = None,
     description: Annotated[str | None, Form()] = None,
     id_category: Annotated[int | None, Form()] = None,
-    image: Annotated[UploadFile | None, File()] = None,
+    profile_image: Annotated[UploadFile | None, File()] = None,
+    cover_image: Annotated[UploadFile | None, File()] = None,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_current_user),
 ):
@@ -190,17 +202,30 @@ async def update_club(
             raise HTTPException(400, "Categoría inválida")
         club.id_category = id_category
 
-    if image is not None and image.filename:
-        if club.image is not None:
+    if profile_image is not None and profile_image.filename:
+        if club.profile_image is not None:
             await storage_service.delete_file(
                 bucket_name=settings.R2_BUCKET_PUBLIC,
-                object_key=club.image,
+                object_key=club.profile_image,
             )
 
-        club.image = await storage_service.upload_file(
-            file=image,
+        club.profile_image = await storage_service.upload_file(
+            file=profile_image,
             bucket_name=settings.R2_BUCKET_PUBLIC,
-            prefix=f"clubs/{club.id}/images",
+            prefix=f"clubs/{club.id}/profile",
+        )
+
+    if cover_image is not None and cover_image.filename:
+        if club.cover_image is not None:
+            await storage_service.delete_file(
+                bucket_name=settings.R2_BUCKET_PUBLIC,
+                object_key=club.cover_image,
+            )
+
+        club.cover_image = await storage_service.upload_file(
+            file=cover_image,
+            bucket_name=settings.R2_BUCKET_PUBLIC,
+            prefix=f"clubs/{club.id}/cover",
         )
 
     db.commit()

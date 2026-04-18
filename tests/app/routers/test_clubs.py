@@ -80,7 +80,8 @@ def create_club(
     leader_id=1,
     name=None,
     description="Desc",
-    image=None,
+    profile_image=None,
+    cover_image=None,
 ):
     ensure_user(db, leader_id)
 
@@ -89,7 +90,8 @@ def create_club(
         description=description,
         id_category=category_id,
         id_leader=leader_id,
-        image=image,
+        profile_image=profile_image,
+        cover_image=cover_image,
     )
     db.add(club)
     db.commit()
@@ -135,7 +137,8 @@ def test_get_clubs(db, monkeypatch):
         db,
         category.id,
         name=unique_name("Club Uno"),
-        image="clubs/test/images/uno.png",
+        profile_image="clubs/test/profile/uno.png",
+        cover_image="clubs/test/cover/uno.png",
     )
 
     create_club(
@@ -143,7 +146,8 @@ def test_get_clubs(db, monkeypatch):
         category.id,
         leader_id=2,
         name=unique_name("Club Dos"),
-        image=None,
+        profile_image=None,
+        cover_image=None,
     )
 
     client = TestClient(app)
@@ -155,8 +159,12 @@ def test_get_clubs(db, monkeypatch):
 
     club_one_response = next(item for item in data if item["id"] == club_one.id)
     assert (
-        club_one_response["image"]
-        == "https://cdn.example.com/clubs/test/images/uno.png"
+        club_one_response["profile_image"]
+        == "https://cdn.example.com/clubs/test/profile/uno.png"
+    )
+    assert (
+        club_one_response["cover_image"]
+        == "https://cdn.example.com/clubs/test/cover/uno.png"
     )
 
 
@@ -168,18 +176,22 @@ def test_get_club_not_found():
     assert response.status_code == 404
 
 
-def test_create_club_with_image_uses_public_url_and_prefix(
+def test_create_club_with_images_uses_public_url_and_prefixes(
     db,
     monkeypatch,
 ):
     app.dependency_overrides[get_current_user] = override_user(1)
     monkeypatch.setattr(settings, "R2_PUBLIC_URL", "https://cdn.example.com")
 
-    called = {}
+    uploads = []
 
     async def fake_upload(*args, **kwargs):
-        called["bucket_name"] = kwargs["bucket_name"]
-        called["prefix"] = kwargs["prefix"]
+        uploads.append(
+            {
+                "bucket_name": kwargs["bucket_name"],
+                "prefix": kwargs["prefix"],
+            }
+        )
         return f"{kwargs['prefix']}/test.png"
 
     monkeypatch.setattr(storage_service, "upload_file", fake_upload)
@@ -195,24 +207,32 @@ def test_create_club_with_image_uses_public_url_and_prefix(
             "id_category": str(category.id),
         },
         files={
-            "image": ("file.png", b"img", "image/png"),
+            "profile_image": ("profile.png", b"img", "image/png"),
+            "cover_image": ("cover.png", b"img", "image/png"),
         },
     )
 
     assert response.status_code == 201
 
     created_id = response.json()["id"]
-    expected_prefix = f"clubs/{created_id}/images"
+    expected_profile_prefix = f"clubs/{created_id}/profile"
+    expected_cover_prefix = f"clubs/{created_id}/cover"
 
-    assert called["bucket_name"] == settings.R2_BUCKET_PUBLIC
-    assert called["prefix"] == expected_prefix
+    assert uploads[0]["bucket_name"] == settings.R2_BUCKET_PUBLIC
+    assert uploads[0]["prefix"] == expected_profile_prefix
+    assert uploads[1]["bucket_name"] == settings.R2_BUCKET_PUBLIC
+    assert uploads[1]["prefix"] == expected_cover_prefix
     assert (
-        response.json()["image"]
-        == f"https://cdn.example.com/{expected_prefix}/test.png"
+        response.json()["profile_image"]
+        == f"https://cdn.example.com/{expected_profile_prefix}/test.png"
+    )
+    assert (
+        response.json()["cover_image"]
+        == f"https://cdn.example.com/{expected_cover_prefix}/test.png"
     )
 
 
-def test_create_club_without_image_returns_none(db, monkeypatch):
+def test_create_club_without_images_returns_none(db, monkeypatch):
     app.dependency_overrides[get_current_user] = override_user(1)
     monkeypatch.setattr(settings, "R2_PUBLIC_URL", "https://cdn.example.com")
 
@@ -229,10 +249,11 @@ def test_create_club_without_image_returns_none(db, monkeypatch):
     )
 
     assert response.status_code == 201
-    assert response.json()["image"] is None
+    assert response.json()["profile_image"] is None
+    assert response.json()["cover_image"] is None
 
 
-def test_update_club_with_image_deletes_previous_and_returns_public_url(
+def test_update_club_profile_image_deletes_previous_and_returns_public_url(
     db,
     monkeypatch,
 ):
@@ -259,30 +280,30 @@ def test_update_club_with_image_deletes_previous_and_returns_public_url(
         db,
         category.id,
         leader_id=1,
-        image="clubs/123/images/old.png",
+        profile_image="clubs/123/profile/old.png",
     )
 
     client = TestClient(app)
     response = client.patch(
         f"/clubs/{club.id}",
-        files={"image": ("file.png", b"img", "image/png")},
+        files={"profile_image": ("file.png", b"img", "image/png")},
     )
 
     assert response.status_code == 200
 
-    expected_prefix = f"clubs/{club.id}/images"
+    expected_prefix = f"clubs/{club.id}/profile"
 
     assert deleted["bucket_name"] == settings.R2_BUCKET_PUBLIC
-    assert deleted["object_key"] == "clubs/123/images/old.png"
+    assert deleted["object_key"] == "clubs/123/profile/old.png"
     assert uploaded["bucket_name"] == settings.R2_BUCKET_PUBLIC
     assert uploaded["prefix"] == expected_prefix
     assert (
-        response.json()["image"]
+        response.json()["profile_image"]
         == f"https://cdn.example.com/{expected_prefix}/update.png"
     )
 
 
-def test_update_club_with_first_image_does_not_delete_previous(
+def test_update_club_with_first_profile_image_does_not_delete_previous(
     db,
     monkeypatch,
 ):
@@ -302,20 +323,107 @@ def test_update_club_with_first_image_does_not_delete_previous(
     monkeypatch.setattr(storage_service, "upload_file", fake_upload)
 
     category = create_category(db)
-    club = create_club(db, category.id, leader_id=1, image=None)
+    club = create_club(db, category.id, leader_id=1, profile_image=None)
 
     client = TestClient(app)
     response = client.patch(
         f"/clubs/{club.id}",
-        files={"image": ("file.png", b"img", "image/png")},
+        files={"profile_image": ("file.png", b"img", "image/png")},
     )
 
     assert response.status_code == 200
     assert called["deleted"] is False
-    assert called["prefix"] == f"clubs/{club.id}/images"
+    assert called["prefix"] == f"clubs/{club.id}/profile"
     assert (
-        response.json()["image"]
-        == f"https://cdn.example.com/clubs/{club.id}/images/first.png"
+        response.json()["profile_image"]
+        == f"https://cdn.example.com/clubs/{club.id}/profile/first.png"
+    )
+
+
+def test_update_club_cover_image_deletes_previous_and_returns_public_url(
+    db,
+    monkeypatch,
+):
+    app.dependency_overrides[get_current_user] = override_user(1)
+    monkeypatch.setattr(settings, "R2_PUBLIC_URL", "https://cdn.example.com")
+
+    deleted = {}
+    uploaded = {}
+
+    async def fake_delete(*args, **kwargs):
+        deleted["bucket_name"] = kwargs["bucket_name"]
+        deleted["object_key"] = kwargs["object_key"]
+
+    async def fake_upload(*args, **kwargs):
+        uploaded["bucket_name"] = kwargs["bucket_name"]
+        uploaded["prefix"] = kwargs["prefix"]
+        return f"{kwargs['prefix']}/update.png"
+
+    monkeypatch.setattr(storage_service, "delete_file", fake_delete)
+    monkeypatch.setattr(storage_service, "upload_file", fake_upload)
+
+    category = create_category(db)
+    club = create_club(
+        db,
+        category.id,
+        leader_id=1,
+        cover_image="clubs/123/cover/old.png",
+    )
+
+    client = TestClient(app)
+    response = client.patch(
+        f"/clubs/{club.id}",
+        files={"cover_image": ("file.png", b"img", "image/png")},
+    )
+
+    assert response.status_code == 200
+
+    expected_prefix = f"clubs/{club.id}/cover"
+
+    assert deleted["bucket_name"] == settings.R2_BUCKET_PUBLIC
+    assert deleted["object_key"] == "clubs/123/cover/old.png"
+    assert uploaded["bucket_name"] == settings.R2_BUCKET_PUBLIC
+    assert uploaded["prefix"] == expected_prefix
+    assert (
+        response.json()["cover_image"]
+        == f"https://cdn.example.com/{expected_prefix}/update.png"
+    )
+
+
+def test_update_club_with_first_cover_image_does_not_delete_previous(
+    db,
+    monkeypatch,
+):
+    app.dependency_overrides[get_current_user] = override_user(1)
+    monkeypatch.setattr(settings, "R2_PUBLIC_URL", "https://cdn.example.com")
+
+    called = {"deleted": False, "prefix": None}
+
+    async def fake_delete(*args, **kwargs):
+        called["deleted"] = True
+
+    async def fake_upload(*args, **kwargs):
+        called["prefix"] = kwargs["prefix"]
+        return f"{kwargs['prefix']}/first.png"
+
+    monkeypatch.setattr(storage_service, "delete_file", fake_delete)
+    monkeypatch.setattr(storage_service, "upload_file", fake_upload)
+
+    category = create_category(db)
+    club = create_club(db, category.id, leader_id=1, cover_image=None)
+
+    client = TestClient(app)
+    response = client.patch(
+        f"/clubs/{club.id}",
+        files={"cover_image": ("file.png", b"img", "image/png")},
+    )
+
+    assert response.status_code == 200
+    assert called["deleted"] is False
+    assert called["prefix"] == f"clubs/{club.id}/cover"
+    assert (
+        response.json()["cover_image"]
+        == f"https://cdn.example.com/clubs/{club.id}/cover/first.png"
     )
 
 
