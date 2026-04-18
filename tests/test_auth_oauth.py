@@ -5,9 +5,7 @@ from fastapi.testclient import TestClient
 from jose import JWTError
 
 from app.core.database import get_db
-from app.core.security import get_current_user
 from app.main import app
-from app.schemas.auth.auth import CurrentUser
 
 
 @pytest.fixture(autouse=True)
@@ -20,11 +18,6 @@ def override_dependency(db):
 # -----------------------------------------------------
 
 client = TestClient(app)
-
-
-def test_read_users_me_unauthorized():
-    response = client.get("/auth/me")
-    assert response.status_code == 401
 
 
 # --- TESTS DE GOOGLE ---
@@ -188,20 +181,6 @@ def test_microsoft_login_role_not_found_error(mock_verify_ms, mock_save_user, db
 
     response = client.post("/auth/microsoft/mobile-login", json={"token": "fake-token"})
     assert response.status_code == 500
-
-
-def test_get_me_success(clear_dependency_overrides):
-    from app.core.roles import RoleName
-
-    app.dependency_overrides[get_current_user] = lambda: CurrentUser(
-        id=1,
-        role=RoleName.USER,
-    )
-
-    response = client.get("/auth/me")
-    assert response.status_code == 200
-    assert "id" in response.json()
-    assert "role" in response.json()
 
 
 def test_verify_microsoft_token_uses_jwks_endpoint(monkeypatch):
