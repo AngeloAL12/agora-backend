@@ -106,7 +106,7 @@ def test_patch_me_uploads_photo_and_deletes_previous_public_image(
         oauth_provider="google",
         oauth_sub="photo-user",
         id_role=role.id,
-        photo=f"{settings.R2_ENDPOINT}/{settings.R2_BUCKET_PUBLIC}/users/1/photo/old.png",
+        photo="users/1/photo/old.png",
     )
     db.add(user)
     db.commit()
@@ -123,7 +123,7 @@ def test_patch_me_uploads_photo_and_deletes_previous_public_image(
 
     async def fake_delete_file(bucket_name, object_key):
         assert bucket_name == settings.R2_BUCKET_PUBLIC
-        assert object_key == "users/1/photo/old.png"
+        assert object_key == "users/1/photo/old.png"  # stored key, no URL prefix
 
     monkeypatch.setattr(
         "app.routers.auth.users.storage_service.upload_file",
@@ -139,8 +139,11 @@ def test_patch_me_uploads_photo_and_deletes_previous_public_image(
         files={"photo": ("new.png", b"fake-image", "image/png")},
     )
 
+    base = (
+        settings.R2_PUBLIC_URL or f"{settings.R2_ENDPOINT}/{settings.R2_BUCKET_PUBLIC}"
+    ).rstrip("/")
     assert response.status_code == 200
-    assert response.json()["photo"].endswith("users/1/photo/new.png")
+    assert response.json()["photo"] == f"{base}/users/1/photo/new.png"
 
 
 def test_update_my_career_not_found(db, clear_dependency_overrides):

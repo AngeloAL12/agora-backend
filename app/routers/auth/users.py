@@ -14,6 +14,15 @@ from app.services.storage_service import storage_service
 router = APIRouter(prefix="/users", tags=["users"])
 
 
+def _photo_url(object_key: str | None) -> str | None:
+    if not object_key:
+        return None
+    base = (
+        settings.R2_PUBLIC_URL or f"{settings.R2_ENDPOINT}/{settings.R2_BUCKET_PUBLIC}"
+    ).rstrip("/")
+    return f"{base}/{object_key}"
+
+
 class CareerUpdateRequest(BaseModel):
     career_id: int
 
@@ -58,9 +67,9 @@ def me(
         "name": user.name,
         "clubs_count": len(user.club_memberships),
         "complaints_count": len(user.complaints),
-        "likes_count": 0,  # TODO: Not yet implemented
+        "likes_count": 0,
         "career": user.career.name if user.career else None,
-        "photo": user.photo,
+        "photo": _photo_url(user.photo),
     }
 
 
@@ -102,42 +111,19 @@ async def update_my_profile(
     if name is not None:
         user.name = name.strip() or user.name
 
-    previous_photo = user.photo
+    previous_key = user.photo
     if photo is not None:
-        object_key = await storage_service.upload_file(
+        user.photo = await storage_service.upload_file(
             photo,
             settings.R2_BUCKET_PUBLIC,
             f"users/{user.id}/photo",
         )
-        base_public_url = (
-            settings.R2_PUBLIC_URL
-            if settings.R2_PUBLIC_URL
-            else f"{settings.R2_ENDPOINT}/{settings.R2_BUCKET_PUBLIC}"
-        )
-        # Ensure no trailing slash before appending object_key
-        base_public_url = base_public_url.rstrip("/")
-        user.photo = f"{base_public_url}/{object_key}"
 
     db.commit()
     db.refresh(user)
 
-    if photo is not None and previous_photo:
-        old_key = None
-        if settings.R2_PUBLIC_URL and previous_photo.startswith(
-            f"{settings.R2_PUBLIC_URL.rstrip('/')}/"
-        ):
-            old_key = previous_photo.split(f"{settings.R2_PUBLIC_URL.rstrip('/')}/", 1)[
-                1
-            ]
-        elif previous_photo.startswith(
-            f"{settings.R2_ENDPOINT}/{settings.R2_BUCKET_PUBLIC}/"
-        ):
-            old_key = previous_photo.split(
-                f"{settings.R2_ENDPOINT}/{settings.R2_BUCKET_PUBLIC}/", 1
-            )[1]
-
-        if old_key:
-            await storage_service.delete_file(settings.R2_BUCKET_PUBLIC, old_key)
+    if photo is not None and previous_key:
+        await storage_service.delete_file(settings.R2_BUCKET_PUBLIC, previous_key)
 
     return {
         "id": user.id,
@@ -148,7 +134,7 @@ async def update_my_profile(
         "complaints_count": len(user.complaints),
         "likes_count": 0,
         "career": user.career.name if user.career else None,
-        "photo": user.photo,
+        "photo": _photo_url(user.photo),
     }
 
 
