@@ -235,7 +235,7 @@ async def update_club(
 
 
 @router.delete("/{club_id}")
-def delete_club(
+async def delete_club(
     club_id: int,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_current_user),
@@ -247,6 +247,18 @@ def delete_club(
 
     if club.id_leader != current_user.id:
         raise HTTPException(403, "Solo el líder puede eliminar")
+
+    if club.profile_image:
+        await storage_service.delete_file(
+            bucket_name=settings.R2_BUCKET_PUBLIC,
+            object_key=club.profile_image,
+        )
+
+    if club.cover_image:
+        await storage_service.delete_file(
+            bucket_name=settings.R2_BUCKET_PUBLIC,
+            object_key=club.cover_image,
+        )
 
     db.query(ClubMember).filter(ClubMember.id_club == club_id).delete()
     db.delete(club)

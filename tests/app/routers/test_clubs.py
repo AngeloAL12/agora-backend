@@ -521,16 +521,31 @@ def test_update_description_too_long(db):
     assert "250" in response.json()["detail"]
 
 
-def test_delete_club(db):
+def test_delete_club(db, monkeypatch):
     app.dependency_overrides[get_current_user] = override_user(1)
 
+    deleted_files = []
+
+    async def fake_delete(*args, **kwargs):
+        deleted_files.append(kwargs["object_key"])
+
+    monkeypatch.setattr(storage_service, "delete_file", fake_delete)
+
     category = create_category(db)
-    club = create_club(db, category.id, leader_id=1)
+    club = create_club(
+        db,
+        category.id,
+        leader_id=1,
+        profile_image="clubs/123/profile/test.png",
+        cover_image="clubs/123/cover/test.png",
+    )
 
     client = TestClient(app)
     response = client.delete(f"/clubs/{club.id}")
 
     assert response.status_code == 200
+    assert "clubs/123/profile/test.png" in deleted_files
+    assert "clubs/123/cover/test.png" in deleted_files
 
 
 def test_join_leave_flow(db):
