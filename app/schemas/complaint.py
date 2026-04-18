@@ -47,27 +47,20 @@ class ComplaintListItemResponse(BaseModel):
     id: int
     type: ComplaintType
     title: str
-    description: str
     status: ComplaintStatus
     created_at: datetime | Any = Field(..., description="Creation timestamp")
 
     model_config = ConfigDict(from_attributes=True)
 
 
-class ComplaintOut(BaseModel):
-    id: int
-    id_user: int
-    type: ComplaintType
-    title: str
-    description: str
-    id_building: int | None = None
-    classroom: str | None = None
-    status: ComplaintStatus
-    has_appealed: bool
-    created_at: datetime
-
-    model_config = ConfigDict(from_attributes=True)
+# Alias para el listado de admin (misma forma)
+ComplaintOut = ComplaintListItemResponse
 
 
 class ComplaintStatusUpdate(BaseModel):
     status: ComplaintStatus
+
+
+class ComplaintUpdate(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=255)
+    description: str | None = Field(default=None, min_length=1)

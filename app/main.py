@@ -5,6 +5,7 @@ from app.routers.clubs import router as clubs_router
 from app.routers.complaints import router as complaints_router
 from app.routers.health import router as health_router
 from app.routers.map import router as map_router
+from app.routers.notifications import router as notifications_router
 
 app = FastAPI()
 
@@ -15,6 +16,7 @@ app.include_router(users_router)
 app.include_router(push_token_router)
 app.include_router(clubs_router)
 app.include_router(map_router)
+app.include_router(notifications_router)
 
 
 @app.get("/")

@@ -28,7 +28,7 @@ class StorageService:
         try:
             async with self._session.client(
                 "s3", endpoint_url=self._endpoint_url
-            ) as s3:
+            ) as s3:  # type: ignore
                 await s3.upload_fileobj(
                     file.file,
                     bucket_name,
@@ -45,16 +45,16 @@ class StorageService:
             ) from e
 
     async def delete_file(self, bucket_name: str, object_key: str) -> None:
+        """
+        Elimina un objeto de R2 dado su bucket y object key.
+        """
         try:
             async with self._session.client(
                 "s3", endpoint_url=self._endpoint_url
-            ) as s3:
-                await s3.delete_object(
-                    Bucket=bucket_name,
-                    Key=object_key,
-                )
+            ) as s3:  # type: ignore
+                await s3.delete_object(Bucket=bucket_name, Key=object_key)
         except ClientError as e:
-            logger.error(f"Error eliminando archivo de R2: {e}")
+            logger.error(f"Error eliminando archivo en R2: {e}")
             raise HTTPException(
                 status_code=500,
                 detail="No se pudo eliminar el archivo.",
@@ -66,7 +66,7 @@ class StorageService:
         try:
             async with self._session.client(
                 "s3", endpoint_url=self._endpoint_url
-            ) as s3:
+            ) as s3:  # type: ignore
                 url = await s3.generate_presigned_url(
                     ClientMethod="get_object",
                     Params={"Bucket": bucket_name, "Key": object_key},

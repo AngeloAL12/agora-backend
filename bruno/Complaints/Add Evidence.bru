@@ -11,7 +11,7 @@ post {
 }
 
 auth:bearer {
-  token: {{auth_token}}
+  token: {{admin_token}}
 }
 
 body:multipart-form {
@@ -19,7 +19,7 @@ body:multipart-form {
 }
 
 vars:pre-request {
-  complaint_id: 1
+  complaint_id: 242
 }
 
 settings {

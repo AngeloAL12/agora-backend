@@ -45,8 +45,11 @@ def verify_and_save_user(
         user.email = email
         user.oauth_provider = oauth_provider
         user.oauth_sub = oauth_sub
-        user.name = format_user_name(name) or user.name
-        if photo:
+
+        if not user.name:
+            user.name = format_user_name(name)
+
+        if not user.photo and photo:
             user.photo = photo
 
         db.commit()

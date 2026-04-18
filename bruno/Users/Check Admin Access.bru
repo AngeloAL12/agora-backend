@@ -5,13 +5,13 @@ meta {
 }
 
 get {
-  url: {{base_url}}/users/admin
+  url: {{base_url}}/users/me
   body: none
   auth: bearer
 }
 
 auth:bearer {
-  token: {{auth_token}}
+  token: {{admin_token}}
 }
 
 settings {
@@ -21,5 +21,5 @@ settings {
 
 docs {
   # Verificar Acceso Admin
-  Valida si el token de autenticación actual pertenece a un usuario con rol de Administrador.
+  Recupera el perfil del usuario actual y permite validar que el campo `role` sea `ADMIN`.
 }
