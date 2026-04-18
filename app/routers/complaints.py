@@ -1,4 +1,13 @@
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    UploadFile,
+    status,
+)
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
@@ -15,6 +24,10 @@ from app.models.complaint.complaint import (
 from app.models.complaint.complaint_evidence import ComplaintEvidence
 from app.models.complaint.complaint_image import ComplaintImage
 from app.models.complaint.complaint_status_history import ComplaintStatusHistory
+from app.models.notification.notification import (
+    NotificationCategory,
+    NotificationEventType,
+)
 from app.schemas.auth.auth import CurrentUser
 from app.schemas.complaint import (
     ComplaintListItemResponse,
@@ -26,6 +39,74 @@ from app.schemas.complaint import (
 from app.services.storage_service import storage_service
 
 router = APIRouter(prefix="/complaints", tags=["complaints"])
+
+
+def _notify_complaint_submitted(
+    user_id: int, complaint_id: int, complaint_title: str
+) -> None:
+    from app.core.database import SessionLocal
+    from app.services.notification_service import create_notification
+
+    db = SessionLocal()
+    try:
+        create_notification(
+            db,
+            id_user=user_id,
+            category=NotificationCategory.REPORTS,
+            event_type=NotificationEventType.COMPLAINT_SUBMITTED,
+            title="Queja enviada",
+            body=f'Tu queja "{complaint_title}" fue recibida y está siendo revisada.',
+            reference_id=complaint_id,
+        )
+    finally:
+        db.close()
+
+
+def _notify_complaint_status_changed(
+    user_id: int,
+    complaint_id: int,
+    complaint_title: str,
+    new_status: ComplaintStatus,
+) -> None:
+    from app.core.database import SessionLocal
+    from app.services.notification_service import create_notification
+
+    _event_map = {
+        ComplaintStatus.IN_PROGRESS: (
+            NotificationEventType.COMPLAINT_IN_PROGRESS,
+            "Queja en progreso",
+            f'Tu queja "{complaint_title}" está siendo atendida.',
+        ),
+        ComplaintStatus.RESOLVED: (
+            NotificationEventType.COMPLAINT_RESOLVED,
+            "Queja resuelta",
+            f'Tu queja "{complaint_title}" ha sido resuelta.',
+        ),
+        ComplaintStatus.REJECTED: (
+            NotificationEventType.COMPLAINT_REJECTED,
+            "Queja rechazada",
+            f'Tu queja "{complaint_title}" fue rechazada.',
+        ),
+    }
+
+    if new_status not in _event_map:
+        return
+
+    event_type, title, body = _event_map[new_status]
+
+    db = SessionLocal()
+    try:
+        create_notification(
+            db,
+            id_user=user_id,
+            category=NotificationCategory.REPORTS,
+            event_type=event_type,
+            title=title,
+            body=body,
+            reference_id=complaint_id,
+        )
+    finally:
+        db.close()
 
 
 async def _serialize_complaint(complaint: Complaint) -> ComplaintResponse:
@@ -63,6 +144,7 @@ async def _serialize_complaint(complaint: Complaint) -> ComplaintResponse:
     status_code=status.HTTP_201_CREATED,
 )
 async def create_complaint(
+    background_tasks: BackgroundTasks,
     title: str = Form(...),
     description: str = Form(...),
     category: ComplaintCategory = Form(...),
@@ -128,6 +210,13 @@ async def create_complaint(
         )
     )
     db.commit()
+
+    background_tasks.add_task(
+        _notify_complaint_submitted,
+        user_id=current_user.id,
+        complaint_id=complaint.id,
+        complaint_title=complaint.title,
+    )
 
     complaint = db.execute(
         select(Complaint)
@@ -261,6 +350,7 @@ async def upload_complaint_evidence(
 async def update_complaint_status(
     complaint_id: int,
     status_update: ComplaintStatusUpdate,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(require_staff_role),
 ):
@@ -294,6 +384,14 @@ async def update_complaint_status(
         )
     )
     db.commit()
+
+    background_tasks.add_task(
+        _notify_complaint_status_changed,
+        user_id=complaint.id_user,
+        complaint_id=complaint.id,
+        complaint_title=complaint.title,
+        new_status=status_update.status,
+    )
 
     return {
         "message": "Estado actualizado exitosamente",

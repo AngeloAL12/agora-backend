@@ -70,7 +70,10 @@ def _verify_microsoft_token(token: str, client_id: str, tenant_id: str) -> dict:
 
 
 @router.post("/google/mobile-login")
-def google_mobile_login(request_data: TokenRequest, db: Session = Depends(get_db)):
+async def google_mobile_login(
+    request_data: TokenRequest,
+    db: Session = Depends(get_db),
+):
     # Acepta los client IDs configurados para Web, iOS y Android.
     valid_client_ids = [
         _normalize_google_client_id(cid)
@@ -132,12 +135,15 @@ def google_mobile_login(request_data: TokenRequest, db: Session = Depends(get_db
 
 
 @router.post("/microsoft/mobile-login")
-def microsoft_mobile_login(request_data: TokenRequest, db: Session = Depends(get_db)):
+async def microsoft_mobile_login(
+    request_data: TokenRequest,
+    db: Session = Depends(get_db),
+):
     try:
         claims = _verify_microsoft_token(
             request_data.token,
             settings.MICROSOFT_CLIENT_ID,
-            "common",  # Reemplazado temporalmente (antes era: MICROSOFT_TENANT_ID)
+            settings.MICROSOFT_TENANT_ID,
         )
         email = (
             claims.get("preferred_username") or claims.get("email") or claims.get("upn")
@@ -146,6 +152,14 @@ def microsoft_mobile_login(request_data: TokenRequest, db: Session = Depends(get
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Acceso denegado. No se encontró un correo válido.",
+            )
+        if not email.endswith("@mexicali.tecnm.mx"):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=(
+                    "Acceso denegado. Se requiere correo institucional "
+                    "(@mexicali.tecnm.mx)"
+                ),
             )
     except JWTError as err:
         raise HTTPException(
@@ -178,14 +192,6 @@ def microsoft_mobile_login(request_data: TokenRequest, db: Session = Depends(get
             "id_career": user.id_career,
         },
     }
-
-
-@router.get("/me")
-def read_users_me(current_user: CurrentUser = Depends(get_current_user)):
-    """
-    Devuelve los datos del usuario actual autenticado.
-    """
-    return {"id": current_user.id, "role": current_user.role}
 
 
 class RefreshRequest(BaseModel):
