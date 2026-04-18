@@ -17,16 +17,17 @@ class EventBase(BaseModel):
     latitude: float = Field(..., ge=-90, le=90)
     longitude: float = Field(..., ge=-180, le=180)
 
+
+class EventCreate(EventBase):
     @field_validator("date")
     @classmethod
     def date_must_be_future(cls, v: datetime):
+        # Ensure both datetimes are timezone-aware for comparison
+        if v.tzinfo is None:
+            v = v.replace(tzinfo=UTC)
         if v <= datetime.now(UTC):
             raise ValueError("La fecha debe ser futura")
         return v
-
-
-class EventCreate(EventBase):
-    pass
 
 
 class EventUpdate(BaseModel):
@@ -39,14 +40,23 @@ class EventUpdate(BaseModel):
     @field_validator("date")
     @classmethod
     def date_must_be_future(cls, v: datetime | None):
-        if v and v <= datetime.now(UTC):
-            raise ValueError("La fecha debe ser futura")
+        if v:
+            # Ensure both datetimes are timezone-aware for comparison
+            if v.tzinfo is None:
+                v = v.replace(tzinfo=UTC)
+            if v <= datetime.now(UTC):
+                raise ValueError("La fecha debe ser futura")
         return v
 
 
-class EventResponse(EventBase):
+class EventResponse(BaseModel):
     id: int
     id_club: int
+    title: str
+    description: str | None
+    date: datetime
+    latitude: float | None
+    longitude: float | None
     created_at: datetime
     author: AuthorOut
 

@@ -576,3 +576,261 @@ def test_transfer_leadership_same_leader_rejected(db, clear_dependency_overrides
 
     assert response.status_code == 409
     assert response.json()["detail"] == "El usuario ya es el líder actual"
+
+
+# --- Tests de Eventos ---
+
+
+def create_event(db, club_id, author_id, title="Evento Test", future=True):
+    from datetime import datetime, timedelta
+
+    ensure_user(db, author_id)
+    from app.models.club.event import ClubEvent
+
+    if future:
+        event_date = datetime.now() + timedelta(days=7)
+    else:
+        event_date = datetime.now() - timedelta(days=1)
+
+    event = ClubEvent(
+        id_club=club_id,
+        id_author=author_id,
+        title=title,
+        description="Descripción del evento",
+        date=event_date,
+        latitude=32.65,
+        longitude=-115.47,
+    )
+    db.add(event)
+    db.commit()
+    db.refresh(event)
+    return event
+
+
+def test_list_events_empty(db, clear_dependency_overrides):
+    app.dependency_overrides[get_current_user] = override_user(1)
+
+    category = create_category(db)
+    club = create_club(db, category.id, leader_id=1)
+    create_membership(db, club.id, 1)
+
+    client = TestClient(app)
+    response = client.get(f"/clubs/{club.id}/events")
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_list_events_as_member(db, clear_dependency_overrides):
+    app.dependency_overrides[get_current_user] = override_user(2)
+
+    category = create_category(db)
+    club = create_club(db, category.id, leader_id=1)
+    create_membership(db, club.id, 2)
+
+    create_event(db, club.id, author_id=1)
+
+    client = TestClient(app)
+    response = client.get(f"/clubs/{club.id}/events")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 1
+    assert data[0]["title"] == "Evento Test"
+
+
+def test_list_events_club_not_found(db, clear_dependency_overrides):
+    app.dependency_overrides[get_current_user] = override_user(1)
+
+    client = TestClient(app)
+    response = client.get("/clubs/999/events")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Club no encontrado"
+
+
+def test_create_event_as_leader(db, clear_dependency_overrides):
+    app.dependency_overrides[get_current_user] = override_user(1)
+
+    category = create_category(db)
+    club = create_club(db, category.id, leader_id=1)
+
+    from datetime import datetime, timedelta
+
+    client = TestClient(app)
+    response = client.post(
+        f"/clubs/{club.id}/events",
+        json={
+            "title": "Nuevo Evento",
+            "description": "Descripción",
+            "date": (datetime.now() + timedelta(days=7)).isoformat(),
+            "latitude": 32.65,
+            "longitude": -115.47,
+        },
+    )
+
+    assert response.status_code == 201
+    data = response.json()
+    assert data["title"] == "Nuevo Evento"
+    assert data["id_club"] == club.id
+
+
+def test_create_event_as_non_leader_forbidden(db, clear_dependency_overrides):
+    app.dependency_overrides[get_current_user] = override_user(2)
+
+    category = create_category(db)
+    club = create_club(db, category.id, leader_id=1)
+    create_membership(db, club.id, 2)
+
+    from datetime import datetime, timedelta
+
+    client = TestClient(app)
+    response = client.post(
+        f"/clubs/{club.id}/events",
+        json={
+            "title": "Evento No Autorizado",
+            "description": "Descripción",
+            "date": (datetime.now() + timedelta(days=7)).isoformat(),
+            "latitude": 32.65,
+            "longitude": -115.47,
+        },
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Solo el líder puede realizar esta acción"
+
+
+def test_create_event_club_not_found(db, clear_dependency_overrides):
+    app.dependency_overrides[get_current_user] = override_user(1)
+
+    from datetime import datetime, timedelta
+
+    client = TestClient(app)
+    response = client.post(
+        "/clubs/999/events",
+        json={
+            "title": "Evento",
+            "description": "Descripción",
+            "date": (datetime.now() + timedelta(days=7)).isoformat(),
+            "latitude": 32.65,
+            "longitude": -115.47,
+        },
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Club no encontrado"
+
+
+def test_create_event_past_date_rejected(db, clear_dependency_overrides):
+    app.dependency_overrides[get_current_user] = override_user(1)
+
+    category = create_category(db)
+    club = create_club(db, category.id, leader_id=1)
+
+    from datetime import datetime, timedelta
+
+    client = TestClient(app)
+    response = client.post(
+        f"/clubs/{club.id}/events",
+        json={
+            "title": "Evento Pasado",
+            "description": "Descripción",
+            "date": (datetime.now() - timedelta(days=1)).isoformat(),
+            "latitude": 32.65,
+            "longitude": -115.47,
+        },
+    )
+
+    assert response.status_code == 422
+
+
+def test_update_event_as_leader(db, clear_dependency_overrides):
+    app.dependency_overrides[get_current_user] = override_user(1)
+
+    category = create_category(db)
+    club = create_club(db, category.id, leader_id=1)
+    event = create_event(db, club.id, author_id=1)
+
+    client = TestClient(app)
+    response = client.patch(
+        f"/clubs/{club.id}/events/{event.id}",
+        json={"title": "Evento Actualizado"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["title"] == "Evento Actualizado"
+
+
+def test_update_event_as_non_leader_forbidden(db, clear_dependency_overrides):
+    app.dependency_overrides[get_current_user] = override_user(2)
+
+    category = create_category(db)
+    club = create_club(db, category.id, leader_id=1)
+    create_membership(db, club.id, 2)
+    event = create_event(db, club.id, author_id=1)
+
+    client = TestClient(app)
+    response = client.patch(
+        f"/clubs/{club.id}/events/{event.id}",
+        json={"title": "Intento de Cambio"},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Solo el líder puede realizar esta acción"
+
+
+def test_update_event_not_found(db, clear_dependency_overrides):
+    app.dependency_overrides[get_current_user] = override_user(1)
+
+    category = create_category(db)
+    club = create_club(db, category.id, leader_id=1)
+
+    client = TestClient(app)
+    response = client.patch(
+        f"/clubs/{club.id}/events/999",
+        json={"title": "No Existe"},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Evento no encontrado"
+
+
+def test_delete_event_as_leader(db, clear_dependency_overrides):
+    app.dependency_overrides[get_current_user] = override_user(1)
+
+    category = create_category(db)
+    club = create_club(db, category.id, leader_id=1)
+    event = create_event(db, club.id, author_id=1)
+
+    client = TestClient(app)
+    response = client.delete(f"/clubs/{club.id}/events/{event.id}")
+
+    assert response.status_code == 204
+
+
+def test_delete_event_as_non_leader_forbidden(db, clear_dependency_overrides):
+    app.dependency_overrides[get_current_user] = override_user(2)
+
+    category = create_category(db)
+    club = create_club(db, category.id, leader_id=1)
+    create_membership(db, club.id, 2)
+    event = create_event(db, club.id, author_id=1)
+
+    client = TestClient(app)
+    response = client.delete(f"/clubs/{club.id}/events/{event.id}")
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Solo el líder puede realizar esta acción"
+
+
+def test_delete_event_not_found(db, clear_dependency_overrides):
+    app.dependency_overrides[get_current_user] = override_user(1)
+
+    category = create_category(db)
+    club = create_club(db, category.id, leader_id=1)
+
+    client = TestClient(app)
+    response = client.delete(f"/clubs/{club.id}/events/999")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Evento no encontrado"
