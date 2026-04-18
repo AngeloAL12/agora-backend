@@ -1,9 +1,19 @@
-from typing import cast
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    UploadFile,
+    status,
+)
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.club.club import Club
@@ -11,13 +21,55 @@ from app.models.club.club_category import ClubCategory
 from app.models.club.club_member import ClubMember
 from app.schemas.auth.auth import CurrentUser
 from app.schemas.club.club import (
-    ClubCreate,
+    ClubCategoryResponse,
     ClubDetailResponse,
     ClubResponse,
-    ClubUpdate,
 )
+from app.services.storage_service import storage_service
 
 router = APIRouter(prefix="/clubs", tags=["clubs"])
+
+
+def _build_image_url(image_key: str | None) -> str | None:
+    if not image_key:
+        return None
+    return f"{settings.R2_PUBLIC_URL}/{image_key}"
+
+
+def _to_club_response(club: Club) -> ClubResponse:
+    return ClubResponse.model_validate(
+        {
+            **club.__dict__,
+            "profile_image": _build_image_url(club.profile_image),
+            "cover_image": _build_image_url(club.cover_image),
+        }
+    )
+
+
+def _to_club_detail_response(club: Club, members_count: int) -> ClubDetailResponse:
+    return ClubDetailResponse.model_validate(
+        {
+            **club.__dict__,
+            "profile_image": _build_image_url(club.profile_image),
+            "cover_image": _build_image_url(club.cover_image),
+            "members_count": members_count,
+        }
+    )
+
+
+def _clean_required_text(value: str, field_name: str, max_length: int) -> str:
+    cleaned = value.strip()
+    if not cleaned:
+        raise HTTPException(
+            status_code=400,
+            detail=f"El campo {field_name} no puede contener solo espacios en blanco",
+        )
+    if len(cleaned) > max_length:
+        raise HTTPException(
+            status_code=400,
+            detail=f"El campo {field_name} no puede exceder {max_length} caracteres",
+        )
+    return cleaned
 
 
 @router.get("", response_model=list[ClubResponse])
@@ -26,7 +78,13 @@ def get_clubs(
     limit: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
 ):
-    return db.query(Club).offset(skip).limit(limit).all()
+    clubs = db.query(Club).offset(skip).limit(limit).all()
+    return [_to_club_response(club) for club in clubs]
+
+
+@router.get("/categories", response_model=list[ClubCategoryResponse])
+def get_club_categories(db: Session = Depends(get_db)):
+    return db.query(ClubCategory).order_by(ClubCategory.name.asc()).all()
 
 
 @router.get("/{club_id}", response_model=ClubDetailResponse)
@@ -38,38 +96,60 @@ def get_club(club_id: int, db: Session = Depends(get_db)):
 
     members_count = db.query(ClubMember).filter(ClubMember.id_club == club_id).count()
 
-    return ClubDetailResponse.model_validate(
-        {**club.__dict__, "members_count": members_count}
-    )
+    return _to_club_detail_response(club, members_count)
 
 
-@router.post("", response_model=ClubResponse)
-def create_club(
-    payload: ClubCreate,
+@router.post(
+    "",
+    response_model=ClubResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_club(
+    name: Annotated[str, Form(...)],
+    description: Annotated[str, Form(...)],
+    id_category: Annotated[int, Form(...)],
+    profile_image: Annotated[UploadFile | None, File()] = None,
+    cover_image: Annotated[UploadFile | None, File()] = None,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_current_user),
 ):
-    existing = db.query(Club).filter(Club.name == payload.name).first()
+    clean_name = _clean_required_text(name, "name", 255)
+    clean_description = _clean_required_text(description, "description", 250)
+
+    existing = db.query(Club).filter(Club.name == clean_name).first()
     if existing:
         raise HTTPException(400, "Nombre de club ya existe")
 
-    category = (
-        db.query(ClubCategory).filter(ClubCategory.id == payload.id_category).first()
-    )
+    category = db.query(ClubCategory).filter(ClubCategory.id == id_category).first()
     if not category:
         raise HTTPException(400, "Categoría inválida")
 
     club = Club(
-        name=payload.name,
-        description=payload.description,
-        image=payload.image,
-        id_category=payload.id_category,
+        name=clean_name,
+        description=clean_description,
+        profile_image=None,
+        cover_image=None,
+        id_category=id_category,
         id_leader=current_user.id,
     )
 
     try:
         db.add(club)
         db.flush()
+
+        if profile_image is not None and profile_image.filename:
+            club.profile_image = await storage_service.upload_file(
+                file=profile_image,
+                bucket_name=settings.R2_BUCKET_PUBLIC,
+                prefix=f"clubs/{club.id}/profile",
+            )
+
+        if cover_image is not None and cover_image.filename:
+            club.cover_image = await storage_service.upload_file(
+                file=cover_image,
+                bucket_name=settings.R2_BUCKET_PUBLIC,
+                prefix=f"clubs/{club.id}/cover",
+            )
 
         db.add(
             ClubMember(
@@ -80,7 +160,7 @@ def create_club(
 
         db.commit()
         db.refresh(club)
-        return club
+        return _to_club_response(club)
 
     except IntegrityError as err:
         db.rollback()
@@ -88,9 +168,13 @@ def create_club(
 
 
 @router.patch("/{club_id}", response_model=ClubResponse)
-def update_club(
+async def update_club(
     club_id: int,
-    payload: ClubUpdate,
+    name: Annotated[str | None, Form()] = None,
+    description: Annotated[str | None, Form()] = None,
+    id_category: Annotated[int | None, Form()] = None,
+    profile_image: Annotated[UploadFile | None, File()] = None,
+    cover_image: Annotated[UploadFile | None, File()] = None,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_current_user),
 ):
@@ -102,45 +186,56 @@ def update_club(
     if club.id_leader != current_user.id:
         raise HTTPException(403, "Solo el líder puede editar")
 
-    if "name" in payload.model_fields_set:
-        name = payload.name
-        if name is None:
-            raise HTTPException(400, "El nombre no puede ser null")
-
-        existing = db.query(Club).filter(Club.name == name).first()
+    if name is not None:
+        clean_name = _clean_required_text(name, "name", 255)
+        existing = db.query(Club).filter(Club.name == clean_name).first()
         if existing and existing.id != club.id:
             raise HTTPException(400, "Nombre de club ya existe")
-        club.name = cast(str, name)
+        club.name = clean_name
 
-    if "description" in payload.model_fields_set:
-        description = payload.description
-        if description is None:
-            raise HTTPException(400, "La descripción no puede ser null")
+    if description is not None:
+        club.description = _clean_required_text(description, "description", 250)
 
-        club.description = cast(str, description)
-
-    if "image" in payload.model_fields_set:
-        club.image = payload.image
-
-    if "id_category" in payload.model_fields_set:
-        category_id = payload.id_category
-        if category_id is None:
-            raise HTTPException(400, "Categoría inválida")
-
-        category = db.query(ClubCategory).filter(ClubCategory.id == category_id).first()
+    if id_category is not None:
+        category = db.query(ClubCategory).filter(ClubCategory.id == id_category).first()
         if not category:
             raise HTTPException(400, "Categoría inválida")
+        club.id_category = id_category
 
-        club.id_category = cast(int, category_id)
+    if profile_image is not None and profile_image.filename:
+        if club.profile_image is not None:
+            await storage_service.delete_file(
+                bucket_name=settings.R2_BUCKET_PUBLIC,
+                object_key=club.profile_image,
+            )
+
+        club.profile_image = await storage_service.upload_file(
+            file=profile_image,
+            bucket_name=settings.R2_BUCKET_PUBLIC,
+            prefix=f"clubs/{club.id}/profile",
+        )
+
+    if cover_image is not None and cover_image.filename:
+        if club.cover_image is not None:
+            await storage_service.delete_file(
+                bucket_name=settings.R2_BUCKET_PUBLIC,
+                object_key=club.cover_image,
+            )
+
+        club.cover_image = await storage_service.upload_file(
+            file=cover_image,
+            bucket_name=settings.R2_BUCKET_PUBLIC,
+            prefix=f"clubs/{club.id}/cover",
+        )
 
     db.commit()
     db.refresh(club)
 
-    return club
+    return _to_club_response(club)
 
 
 @router.delete("/{club_id}")
-def delete_club(
+async def delete_club(
     club_id: int,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_current_user),
@@ -152,6 +247,18 @@ def delete_club(
 
     if club.id_leader != current_user.id:
         raise HTTPException(403, "Solo el líder puede eliminar")
+
+    if club.profile_image:
+        await storage_service.delete_file(
+            bucket_name=settings.R2_BUCKET_PUBLIC,
+            object_key=club.profile_image,
+        )
+
+    if club.cover_image:
+        await storage_service.delete_file(
+            bucket_name=settings.R2_BUCKET_PUBLIC,
+            object_key=club.cover_image,
+        )
 
     db.query(ClubMember).filter(ClubMember.id_club == club_id).delete()
     db.delete(club)

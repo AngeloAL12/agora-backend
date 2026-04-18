@@ -17,7 +17,6 @@ class Settings(BaseSettings):
 
     API_TESTING_SECRET: str | None = None
 
-    # Cloudflare R2 Storage
     R2_ACCOUNT_ID: str
     R2_ACCESS_KEY_ID: str
     R2_SECRET_ACCESS_KEY: str
@@ -33,7 +32,6 @@ class Settings(BaseSettings):
             self.R2_ENDPOINT = f"https://{self.R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
         return self
 
-    # 'extra="ignore"' evita el error de "Extra inputs are not permitted"
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 
