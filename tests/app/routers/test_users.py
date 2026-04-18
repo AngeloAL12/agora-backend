@@ -2,7 +2,7 @@ from fastapi.testclient import TestClient
 
 from app.core.config import settings
 from app.core.roles import RoleName
-from app.core.security import get_current_user
+from app.core.security import get_current_user, require_admin
 from app.main import app
 from app.models.auth.role import Role
 from app.models.auth.user import User
@@ -228,3 +228,48 @@ def test_update_my_career_success(db, clear_dependency_overrides):
 
     db.refresh(user)
     assert user.id_career == career.id
+
+
+# ── GET /users ───────────────────────────────────────────────────────────────
+
+
+def test_get_all_users_returns_list_for_admin(db, clear_dependency_overrides):
+    role = db.query(Role).filter(Role.name == RoleName.USER).one_or_none()
+    if not role:
+        role = Role(name=RoleName.USER)
+        db.add(role)
+        db.commit()
+
+    user = User(
+        email="list-user@itmexicali.edu.mx",
+        name="List User",
+        oauth_provider="google",
+        oauth_sub="list-user-1",
+        id_role=role.id,
+    )
+    db.add(user)
+    db.commit()
+
+    app.dependency_overrides[require_admin] = lambda: CurrentUser(
+        id=1,
+        role=RoleName.ADMIN,
+    )
+    client = TestClient(app)
+
+    response = client.get("/users")
+
+    assert response.status_code == 200
+    assert isinstance(response.json(), list)
+    assert any(u["email"] == "list-user@itmexicali.edu.mx" for u in response.json())
+
+
+def test_get_all_users_forbidden_for_non_admin(clear_dependency_overrides):
+    app.dependency_overrides[get_current_user] = lambda: CurrentUser(
+        id=1,
+        role=RoleName.USER,
+    )
+    client = TestClient(app)
+
+    response = client.get("/users")
+
+    assert response.status_code == 403

@@ -1,11 +1,14 @@
+from datetime import datetime
+from typing import Any
+
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.config import settings
 from app.core.database import get_db
-from app.core.security import get_current_user
+from app.core.security import get_current_user, require_admin, require_staff
 from app.models.auth.user import User
 from app.models.career import Career
 from app.schemas.auth.auth import CurrentUser
@@ -39,6 +42,17 @@ class UserMeResponse(BaseModel):
     photo: str | None
 
 
+class UserListResponse(BaseModel):
+    id: int
+    email: str
+    name: str
+    photo: str | None
+    is_active: bool
+    id_role: int
+    created_at: datetime | Any = Field(..., description="Creation timestamp")
+    model_config = ConfigDict(from_attributes=True)
+
+
 @router.get("/me", response_model=UserMeResponse)
 def me(
     current_user: CurrentUser = Depends(get_current_user),
@@ -53,13 +67,11 @@ def me(
         )
         .where(User.id == current_user.id)
     ).scalar_one_or_none()
-
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Usuario no encontrado",
         )
-
     return {
         "id": user.id,
         "email": user.email,
@@ -90,13 +102,11 @@ async def update_my_profile(
         )
         .where(User.id == current_user.id)
     ).scalar_one_or_none()
-
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Usuario no encontrado",
         )
-
     if id_career is not None:
         career = db.execute(
             select(Career).where(Career.id == id_career)
@@ -107,10 +117,8 @@ async def update_my_profile(
                 detail="Carrera no encontrada",
             )
         user.id_career = id_career
-
     if name is not None:
         user.name = name.strip() or user.name
-
     previous_key = user.photo
     if photo is not None:
         user.photo = await storage_service.upload_file(
@@ -118,13 +126,10 @@ async def update_my_profile(
             settings.R2_BUCKET_PUBLIC,
             f"users/{user.id}/photo",
         )
-
     db.commit()
     db.refresh(user)
-
     if photo is not None and previous_key:
         await storage_service.delete_file(settings.R2_BUCKET_PUBLIC, previous_key)
-
     return {
         "id": user.id,
         "email": user.email,
@@ -150,24 +155,38 @@ def update_my_career(
     career = db.execute(
         select(Career).where(Career.id == body.career_id)
     ).scalar_one_or_none()
-
     if not career:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Carrera no encontrada",
         )
-
     user = db.execute(
         select(User).where(User.id == current_user.id)
     ).scalar_one_or_none()
-
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Usuario no encontrado",
         )
-
     user.id_career = body.career_id
     db.commit()
-
     return {"id_career": user.id_career}
+
+
+@router.get("", response_model=list[UserListResponse])
+def get_all_users(
+    _: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    users = db.execute(select(User).order_by(User.created_at.desc())).scalars().all()
+    return users
+
+
+@router.get("/admin")
+def admin(user: CurrentUser = Depends(require_admin)):
+    return {"message": "admin access", "user": user}
+
+
+@router.get("/staff")
+def staff(user: CurrentUser = Depends(require_staff)):
+    return {"message": "staff access", "user": user}

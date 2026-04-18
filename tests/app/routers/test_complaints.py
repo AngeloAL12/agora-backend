@@ -129,7 +129,10 @@ def test_get_my_complaints_returns_only_owned_items(db, clear_dependency_overrid
     assert response.status_code == 200
     assert len(response.json()) == 1
     assert response.json()[0]["title"] == "Mi queja"
-    assert response.json()[0]["description"] == "Detalle"
+    assert "id" in response.json()[0]
+    assert "status" in response.json()[0]
+    assert "created_at" in response.json()[0]
+    assert "description" not in response.json()[0]
 
 
 def test_get_my_complaint_detail_returns_owned_complaint(
@@ -450,3 +453,224 @@ def test_update_complaint_status_success(db, clear_dependency_overrides):
     assert response.status_code == 200
     assert response.json()["message"] == "Estado actualizado exitosamente"
     assert response.json()["new_status"] == "RESOLVED"
+
+
+# ── DELETE /complaints/{id} ──────────────────────────────────────────────────
+
+
+def test_delete_complaint_as_owner(db, clear_dependency_overrides):
+    user = _create_user(db, RoleName.USER, "del_owner@itmexicali.edu.mx", "del-owner")
+    _override_current_user(user.id)
+
+    complaint = Complaint(
+        id_user=user.id,
+        title="Eliminar por dueño",
+        description="Detalle",
+        category=ComplaintCategory.MAINTENANCE,
+        status=ComplaintStatus.PENDING,
+    )
+    db.add(complaint)
+    db.commit()
+
+    client = TestClient(app)
+    response = client.delete(f"/complaints/{complaint.id}")
+
+    assert response.status_code == 204
+    deleted = db.query(Complaint).filter(Complaint.id == complaint.id).one_or_none()
+    assert deleted is None
+
+
+def test_delete_complaint_as_staff(db, clear_dependency_overrides):
+    owner = _create_user(
+        db, RoleName.USER, "del_owner2@itmexicali.edu.mx", "del-owner2"
+    )
+    staff = _create_user(db, RoleName.STAFF, "del_staff@itmexicali.edu.mx", "del-staff")
+    _override_current_user_with_role(RoleName.STAFF, staff.id)
+
+    complaint = Complaint(
+        id_user=owner.id,
+        title="Eliminar por staff",
+        description="Detalle",
+        category=ComplaintCategory.MAINTENANCE,
+        status=ComplaintStatus.PENDING,
+    )
+    db.add(complaint)
+    db.commit()
+
+    client = TestClient(app)
+    response = client.delete(f"/complaints/{complaint.id}")
+
+    assert response.status_code == 204
+
+
+def test_delete_complaint_forbidden_for_other_user(db, clear_dependency_overrides):
+    owner = _create_user(
+        db, RoleName.USER, "del_owner3@itmexicali.edu.mx", "del-owner3"
+    )
+    other = _create_user(db, RoleName.USER, "del_other@itmexicali.edu.mx", "del-other")
+    _override_current_user(other.id)
+
+    complaint = Complaint(
+        id_user=owner.id,
+        title="No borrar",
+        description="Detalle",
+        category=ComplaintCategory.MAINTENANCE,
+        status=ComplaintStatus.PENDING,
+    )
+    db.add(complaint)
+    db.commit()
+
+    client = TestClient(app)
+    response = client.delete(f"/complaints/{complaint.id}")
+
+    assert response.status_code == 403
+
+
+def test_delete_complaint_not_found(db, clear_dependency_overrides):
+    user = _create_user(db, RoleName.USER, "del_nf@itmexicali.edu.mx", "del-nf")
+    _override_current_user(user.id)
+
+    client = TestClient(app)
+    response = client.delete("/complaints/9999")
+
+    assert response.status_code == 404
+
+
+# ── PATCH /complaints/{id} ───────────────────────────────────────────────────
+
+
+def test_update_complaint_success(db, clear_dependency_overrides, monkeypatch):
+    user = _create_user(db, RoleName.USER, "patch_ok@itmexicali.edu.mx", "patch-ok")
+    _override_current_user(user.id)
+
+    complaint = Complaint(
+        id_user=user.id,
+        title="Titulo original",
+        description="Descripcion original",
+        category=ComplaintCategory.MAINTENANCE,
+        status=ComplaintStatus.PENDING,
+    )
+    db.add(complaint)
+    db.commit()
+
+    async def fake_get_presigned_url(bucket_name, object_key, expiration=3600):
+        return f"https://cdn.example.com/{object_key}"
+
+    monkeypatch.setattr(
+        "app.routers.complaints.storage_service.get_presigned_url",
+        fake_get_presigned_url,
+    )
+
+    client = TestClient(app)
+    response = client.patch(
+        f"/complaints/{complaint.id}",
+        json={"title": "Nuevo titulo", "description": "Nueva descripcion"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["title"] == "Nuevo titulo"
+    assert response.json()["description"] == "Nueva descripcion"
+
+
+def test_update_complaint_rejected_when_not_pending(db, clear_dependency_overrides):
+    user = _create_user(db, RoleName.USER, "patch_np@itmexicali.edu.mx", "patch-np")
+    _override_current_user(user.id)
+
+    complaint = Complaint(
+        id_user=user.id,
+        title="En progreso",
+        description="Detalle",
+        category=ComplaintCategory.MAINTENANCE,
+        status=ComplaintStatus.IN_PROGRESS,
+    )
+    db.add(complaint)
+    db.commit()
+
+    client = TestClient(app)
+    response = client.patch(
+        f"/complaints/{complaint.id}",
+        json={"title": "Intento de edicion"},
+    )
+
+    assert response.status_code == 409
+    assert "PENDING" in response.json()["detail"]
+
+
+def test_update_complaint_forbidden_for_other_user(db, clear_dependency_overrides):
+    owner = _create_user(
+        db, RoleName.USER, "patch_owner@itmexicali.edu.mx", "patch-owner"
+    )
+    other = _create_user(
+        db, RoleName.USER, "patch_other@itmexicali.edu.mx", "patch-other"
+    )
+    _override_current_user(other.id)
+
+    complaint = Complaint(
+        id_user=owner.id,
+        title="Ajena",
+        description="Detalle",
+        category=ComplaintCategory.MAINTENANCE,
+        status=ComplaintStatus.PENDING,
+    )
+    db.add(complaint)
+    db.commit()
+
+    client = TestClient(app)
+    response = client.patch(
+        f"/complaints/{complaint.id}",
+        json={"title": "Intento"},
+    )
+
+    assert response.status_code == 403
+
+
+def test_update_complaint_empty_title_returns_400(db, clear_dependency_overrides):
+    user = _create_user(
+        db, RoleName.USER, "patch_empty_t@itmexicali.edu.mx", "patch-empty-t"
+    )
+    _override_current_user(user.id)
+
+    complaint = Complaint(
+        id_user=user.id,
+        title="Título original",
+        description="Descripción original",
+        category=ComplaintCategory.ACADEMIC,
+        status=ComplaintStatus.PENDING,
+    )
+    db.add(complaint)
+    db.commit()
+
+    client = TestClient(app)
+    response = client.patch(
+        f"/complaints/{complaint.id}",
+        json={"title": "   "},
+    )
+
+    assert response.status_code == 400
+    assert "título" in response.json()["detail"].lower()
+
+
+def test_update_complaint_empty_description_returns_400(db, clear_dependency_overrides):
+    user = _create_user(
+        db, RoleName.USER, "patch_empty_d@itmexicali.edu.mx", "patch-empty-d"
+    )
+    _override_current_user(user.id)
+
+    complaint = Complaint(
+        id_user=user.id,
+        title="Título original",
+        description="Descripción original",
+        category=ComplaintCategory.ACADEMIC,
+        status=ComplaintStatus.PENDING,
+    )
+    db.add(complaint)
+    db.commit()
+
+    client = TestClient(app)
+    response = client.patch(
+        f"/complaints/{complaint.id}",
+        json={"description": "   "},
+    )
+
+    assert response.status_code == 400
+    assert "descripción" in response.json()["detail"].lower()

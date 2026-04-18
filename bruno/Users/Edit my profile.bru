@@ -1,0 +1,31 @@
+meta {
+  name: Edit my profile
+  type: http
+  seq: 5
+}
+
+patch {
+  url: {{base_url}}/users/me
+  body: multipartForm
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{auth_token}}
+}
+
+body:multipart-form {
+  name: Angelo Alvarado León
+  photo: @file(/Users/angeloalvaradoleon/Documents/Media/Images/1473C221-B38E-4B7A-99D5-D8D319600393_4_5005_c.jpeg)
+  ~id_career: 
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}
+
+docs {
+  # Obtener Mi Perfil
+  Recupera los detalles del perfil del usuario autenticado, como nombre, correo y carrera.
+}
