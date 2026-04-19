@@ -1,0 +1,63 @@
+from datetime import UTC, datetime
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+
+class AuthorOut(BaseModel):
+    id: int
+    name: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class EventBase(BaseModel):
+    title: str = Field(..., min_length=3, max_length=150)
+    description: str = Field(..., max_length=500)
+    date: datetime
+    latitude: float = Field(..., ge=-90, le=90)
+    longitude: float = Field(..., ge=-180, le=180)
+
+
+class EventCreate(EventBase):
+    @field_validator("date")
+    @classmethod
+    def date_must_be_future(cls, v: datetime):
+        # Ensure both datetimes are timezone-aware for comparison
+        if v.tzinfo is None:
+            v = v.replace(tzinfo=UTC)
+        if v <= datetime.now(UTC):
+            raise ValueError("La fecha debe ser futura")
+        return v
+
+
+class EventUpdate(BaseModel):
+    title: str | None = Field(default=None, min_length=3, max_length=150)
+    description: str | None = Field(default=None, max_length=500)
+    date: datetime | None = None
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
+
+    @field_validator("date")
+    @classmethod
+    def date_must_be_future(cls, v: datetime | None):
+        if v:
+            # Ensure both datetimes are timezone-aware for comparison
+            if v.tzinfo is None:
+                v = v.replace(tzinfo=UTC)
+            if v <= datetime.now(UTC):
+                raise ValueError("La fecha debe ser futura")
+        return v
+
+
+class EventResponse(BaseModel):
+    id: int
+    id_club: int
+    title: str
+    description: str | None
+    date: datetime
+    latitude: float | None
+    longitude: float | None
+    created_at: datetime
+    author: AuthorOut
+
+    model_config = ConfigDict(from_attributes=True)
