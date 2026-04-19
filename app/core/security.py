@@ -16,6 +16,7 @@ from app.schemas.auth.auth import CurrentUser
 SECRET_KEY = settings.SECRET_KEY
 ALGORITHM = settings.ALGORITHM
 ACCESS_TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
+REFRESH_TOKEN_EXPIRE_DAYS = settings.REFRESH_TOKEN_EXPIRE_DAYS
 
 security = HTTPBearer()
 
@@ -32,15 +33,26 @@ def create_access_token(
     expire = datetime.now(UTC) + (
         expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     )
-    to_encode |= {"exp": expire}
+    to_encode |= {"exp": expire, "type": "access"}
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 
-def decode_access_token(token: str) -> dict[str, Any]:
+def create_refresh_token(data: dict[str, Any]) -> str:
+    to_encode = data.copy()
+    expire = datetime.now(UTC) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+    to_encode |= {"exp": expire, "type": "refresh"}
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+
+def decode_token(token: str) -> dict[str, Any]:
     try:
         return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
     except JWTError as exc:
         raise TokenDecodeError("Token inválido") from exc
+
+
+def decode_access_token(token: str) -> dict[str, Any]:
+    return decode_token(token)
 
 
 def get_current_user(

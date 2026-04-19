@@ -15,10 +15,18 @@ auth:bearer {
 }
 
 vars:pre-request {
-  complaint_id: 2
+  complaint_id: 41
 }
 
 settings {
   encodeUrl: true
   timeout: 0
+}
+
+docs {
+  # Obtener Detalle de Queja
+  Obtiene la información detallada de una queja específica, incluyendo sus evidencias y el estado actual.
+  
+  ## Parámetros de Ruta
+  - `complaint_id`: ID único de la queja.
 }

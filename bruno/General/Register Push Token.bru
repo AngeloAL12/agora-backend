@@ -7,16 +7,28 @@ meta {
 post {
   url: {{base_url}}/push-token
   body: json
-  auth: inherit
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{auth_token}}
 }
 
 body:json {
   {
-    "token": "..."
+    "push_token": "ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]"
   }
 }
 
 settings {
   encodeUrl: true
   timeout: 0
+}
+
+docs {
+  # Registro de Token de Notificaciones Push
+  Registra o actualiza el token Expo para el usuario autenticado.
+  
+  ## Parámetros del Body
+  - `push_token`: El token Expo del dispositivo (`ExponentPushToken[...]`).
 }

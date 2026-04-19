@@ -4,19 +4,19 @@ meta {
   seq: 6
 }
 
-post {
+patch {
   url: {{base_url}}/complaints/{{complaint_id}}/status
   body: json
   auth: bearer
 }
 
 auth:bearer {
-  token: {{auth_token}}
+  token: {{admin_token}}
 }
 
 body:json {
   {
-    "status": "..."
+    "status": "RESOLVED"
   }
 }
 
@@ -27,4 +27,34 @@ vars:pre-request {
 settings {
   encodeUrl: true
   timeout: 0
+}
+
+docs {
+  # Endpoint: Actualización de Estado de Queja
+  
+  ## URL
+  `PATCH /complaints/{complaint_id}/status`
+  
+  ## Autenticación
+  Bearer Token (Staff / Admin)
+  
+  ---
+  
+  ## Estados válidos
+  
+  Los valores aceptados para el campo `status` son:
+  
+  - `PENDING`: Estado inicial por defecto.
+  - `IN_PROGRESS`: La queja está siendo atendida.
+  - `RESOLVED`: La queja ha sido solucionada (requiere evidencia previa).
+  - `REJECTED`: La queja ha sido descartada.
+  
+  ---
+  
+  ## Cuerpo de la petición
+  
+  ```json
+  {
+    "status": "RESOLVED"
+  }
 }

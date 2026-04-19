@@ -5,16 +5,21 @@ meta {
 }
 
 get {
-  url: {{base_url}}/users/admin
+  url: {{base_url}}/users/me
   body: none
   auth: bearer
 }
 
 auth:bearer {
-  token: {{auth_token}}
+  token: {{admin_token}}
 }
 
 settings {
   encodeUrl: true
   timeout: 0
+}
+
+docs {
+  # Verificar Acceso Staff
+  Recupera el perfil del usuario actual y permite validar que el campo `role` sea `STAFF` o `ADMIN`.
 }

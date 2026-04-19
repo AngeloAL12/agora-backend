@@ -17,7 +17,10 @@ class Club(Base):
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     description: Mapped[str] = mapped_column(String(250), nullable=False)
-    image: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+    profile_image: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    cover_image: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
     id_category: Mapped[int] = mapped_column(
         ForeignKey("club_category.id"), nullable=False
     )
