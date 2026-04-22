@@ -7,6 +7,11 @@ from app.models.auth.role import Role
 from app.models.auth.user import User
 from app.models.complaint.complaint import Complaint, ComplaintCategory, ComplaintStatus
 from app.models.complaint.complaint_evidence import ComplaintEvidence
+from app.models.notification.notification import NotificationEventType
+from app.routers.complaints import (
+    _notify_complaint_status_changed,
+    _notify_complaint_submitted,
+)
 from app.schemas.auth.auth import CurrentUser
 
 
@@ -249,6 +254,42 @@ def test_create_complaint_with_too_many_images(
     assert "3" in response.json()["detail"]
 
 
+def test_create_complaint_empty_title_returns_400(db, clear_dependency_overrides):
+    user = _create_user(db, RoleName.USER, "student14@itmexicali.edu.mx", "sub-14")
+    _override_current_user(user.id)
+
+    client = TestClient(app)
+    response = client.post(
+        "/complaints",
+        data={
+            "title": "   ",
+            "description": "Descripcion valida",
+            "category": "SECURITY",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "título" in response.json()["detail"].lower()
+
+
+def test_create_complaint_empty_description_returns_400(db, clear_dependency_overrides):
+    user = _create_user(db, RoleName.USER, "student15@itmexicali.edu.mx", "sub-15")
+    _override_current_user(user.id)
+
+    client = TestClient(app)
+    response = client.post(
+        "/complaints",
+        data={
+            "title": "Titulo valido",
+            "description": "   ",
+            "category": "MAINTENANCE",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "descripción" in response.json()["detail"].lower()
+
+
 def test_get_complaint_not_found(db, clear_dependency_overrides):
     """Test that requesting nonexistent complaint returns 404"""
     user = _create_user(db, RoleName.USER, "student13@itmexicali.edu.mx", "sub-13")
@@ -274,6 +315,32 @@ def test_staff_can_access_get_all_complaints(db, clear_dependency_overrides):
         Complaint(
             id_user=complaint_owner.id,
             title="Queja staff",
+            description="Detalle",
+            category=ComplaintCategory.MAINTENANCE,
+            status=ComplaintStatus.PENDING,
+        )
+    )
+    db.commit()
+
+    client = TestClient(app)
+    response = client.get("/complaints")
+
+    assert response.status_code == 200
+
+
+def test_admin_can_access_get_all_complaints(db, clear_dependency_overrides):
+    complaint_owner = _create_user(
+        db,
+        RoleName.USER,
+        "student_admin@itmexicali.edu.mx",
+        "sub-admin",
+    )
+    _override_current_user_with_role(RoleName.ADMIN)
+
+    db.add(
+        Complaint(
+            id_user=complaint_owner.id,
+            title="Queja admin",
             description="Detalle",
             category=ComplaintCategory.MAINTENANCE,
             status=ComplaintStatus.PENDING,
@@ -453,6 +520,43 @@ def test_update_complaint_status_success(db, clear_dependency_overrides):
     assert response.status_code == 200
     assert response.json()["message"] == "Estado actualizado exitosamente"
     assert response.json()["new_status"] == "RESOLVED"
+
+
+def test_update_complaint_status_in_progress_without_evidence_is_allowed(
+    db, clear_dependency_overrides
+):
+    staff = _create_user(
+        db,
+        RoleName.STAFF,
+        "staff_status_progress@itmexicali.edu.mx",
+        "staff-status-progress",
+    )
+    owner = _create_user(
+        db,
+        RoleName.USER,
+        "owner_status_progress@itmexicali.edu.mx",
+        "owner-status-progress",
+    )
+    _override_current_user_with_role(RoleName.STAFF, staff.id)
+
+    complaint = Complaint(
+        id_user=owner.id,
+        title="En progreso permitido",
+        description="Detalle",
+        category=ComplaintCategory.SECURITY,
+        status=ComplaintStatus.PENDING,
+    )
+    db.add(complaint)
+    db.commit()
+
+    client = TestClient(app)
+    response = client.patch(
+        f"/complaints/{complaint.id}/status",
+        json={"status": "IN_PROGRESS"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["new_status"] == "IN_PROGRESS"
 
 
 # ── DELETE /complaints/{id} ──────────────────────────────────────────────────
@@ -674,3 +778,78 @@ def test_update_complaint_empty_description_returns_400(db, clear_dependency_ove
 
     assert response.status_code == 400
     assert "descripción" in response.json()["detail"].lower()
+
+
+def test_update_complaint_not_found_returns_404(db, clear_dependency_overrides):
+    user = _create_user(
+        db, RoleName.USER, "patch_nf@itmexicali.edu.mx", "patch-not-found"
+    )
+    _override_current_user(user.id)
+
+    client = TestClient(app)
+    response = client.patch(
+        "/complaints/9999",
+        json={"title": "Intento"},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Queja no encontrada"
+
+
+def test_notify_complaint_submitted_creates_notification(monkeypatch):
+    close_calls = []
+    create_calls = []
+
+    class FakeSession:
+        def close(self):
+            close_calls.append(True)
+
+    monkeypatch.setattr("app.core.database.SessionLocal", lambda: FakeSession())
+    monkeypatch.setattr(
+        "app.services.notification_service.create_notification",
+        lambda db, **kwargs: create_calls.append((db, kwargs)),
+    )
+
+    _notify_complaint_submitted(7, 11, "Beca")
+
+    assert len(create_calls) == 1
+    assert create_calls[0][1]["id_user"] == 7
+    assert create_calls[0][1]["reference_id"] == 11
+    assert close_calls == [True]
+
+
+def test_notify_complaint_status_changed_creates_notification_for_resolved(
+    monkeypatch,
+):
+    close_calls = []
+    create_calls = []
+
+    class FakeSession:
+        def close(self):
+            close_calls.append(True)
+
+    monkeypatch.setattr("app.core.database.SessionLocal", lambda: FakeSession())
+    monkeypatch.setattr(
+        "app.services.notification_service.create_notification",
+        lambda db, **kwargs: create_calls.append((db, kwargs)),
+    )
+
+    _notify_complaint_status_changed(3, 9, "Internet", ComplaintStatus.RESOLVED)
+
+    assert len(create_calls) == 1
+    assert create_calls[0][1]["id_user"] == 3
+    assert create_calls[0][1]["event_type"] == NotificationEventType.COMPLAINT_RESOLVED
+    assert close_calls == [True]
+
+
+def test_notify_complaint_status_changed_skips_unsupported_status(monkeypatch):
+    session_calls = []
+
+    monkeypatch.setattr(
+        "app.core.database.SessionLocal",
+        lambda: session_calls.append(True),
+    )
+
+    _notify_complaint_status_changed(3, 9, "Internet", ComplaintStatus.PENDING)
+
+    assert session_calls == []

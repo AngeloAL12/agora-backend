@@ -49,6 +49,19 @@ def test_me_returns_current_user(db, clear_dependency_overrides):
     }
 
 
+def test_me_returns_404_when_user_does_not_exist(clear_dependency_overrides):
+    app.dependency_overrides[get_current_user] = lambda: CurrentUser(
+        id=9999,
+        role=RoleName.USER,
+    )
+    client = TestClient(app)
+
+    response = client.get("/users/me")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Usuario no encontrado"
+
+
 def test_patch_me_updates_name_and_career(db, clear_dependency_overrides):
     role = db.query(Role).filter(Role.name == RoleName.USER).one_or_none()
     if not role:
@@ -89,6 +102,145 @@ def test_patch_me_updates_name_and_career(db, clear_dependency_overrides):
     assert response.json()["id"] == user.id
     assert response.json()["email"] == "patch@itmexicali.edu.mx"
     assert response.json()["role"] == RoleName.USER
+
+
+def test_patch_me_returns_404_when_user_does_not_exist(clear_dependency_overrides):
+    app.dependency_overrides[get_current_user] = lambda: CurrentUser(
+        id=9999,
+        role=RoleName.USER,
+    )
+    client = TestClient(app)
+
+    response = client.patch(
+        "/users/me",
+        data={"name": "Updated Patch User"},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Usuario no encontrado"
+
+
+def test_patch_me_invalid_career_returns_404(db, clear_dependency_overrides):
+    role = db.query(Role).filter(Role.name == RoleName.USER).one_or_none()
+    if not role:
+        role = Role(name=RoleName.USER)
+        db.add(role)
+        db.commit()
+
+    user = User(
+        email="invalid-career@itmexicali.edu.mx",
+        name="Career User",
+        oauth_provider="google",
+        oauth_sub="invalid-career-user",
+        id_role=role.id,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    app.dependency_overrides[get_current_user] = lambda: CurrentUser(
+        id=user.id,
+        role=RoleName.USER,
+    )
+    client = TestClient(app)
+
+    response = client.patch(
+        "/users/me",
+        data={"id_career": 9999},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Carrera no encontrada"
+
+
+def test_patch_me_blank_name_keeps_existing_name(db, clear_dependency_overrides):
+    role = db.query(Role).filter(Role.name == RoleName.USER).one_or_none()
+    if not role:
+        role = Role(name=RoleName.USER)
+        db.add(role)
+        db.commit()
+
+    user = User(
+        email="blank-name@itmexicali.edu.mx",
+        name="Stable Name",
+        oauth_provider="google",
+        oauth_sub="blank-name-user",
+        id_role=role.id,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    app.dependency_overrides[get_current_user] = lambda: CurrentUser(
+        id=user.id,
+        role=RoleName.USER,
+    )
+    client = TestClient(app)
+
+    response = client.patch(
+        "/users/me",
+        data={"name": "   "},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["name"] == "Stable Name"
+
+
+def test_patch_me_uploads_first_photo_without_delete(
+    db, clear_dependency_overrides, monkeypatch
+):
+    role = db.query(Role).filter(Role.name == RoleName.USER).one_or_none()
+    if not role:
+        role = Role(name=RoleName.USER)
+        db.add(role)
+        db.commit()
+
+    user = User(
+        email="first-photo@itmexicali.edu.mx",
+        name="First Photo User",
+        oauth_provider="google",
+        oauth_sub="first-photo-user",
+        id_role=role.id,
+        photo=None,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    app.dependency_overrides[get_current_user] = lambda: CurrentUser(
+        id=user.id,
+        role=RoleName.USER,
+    )
+    client = TestClient(app)
+
+    called = {"deleted": False}
+
+    async def fake_upload_file(file, bucket_name, prefix):
+        del file
+        assert bucket_name == settings.R2_BUCKET_PUBLIC
+        assert prefix == f"users/{user.id}/photo"
+        return f"users/{user.id}/photo/new.png"
+
+    async def fake_delete_file(bucket_name, object_key):
+        del bucket_name, object_key
+        called["deleted"] = True
+
+    monkeypatch.setattr(
+        "app.routers.auth.users.storage_service.upload_file",
+        fake_upload_file,
+    )
+    monkeypatch.setattr(
+        "app.routers.auth.users.storage_service.delete_file",
+        fake_delete_file,
+    )
+
+    response = client.patch(
+        "/users/me",
+        files={"photo": ("new.png", b"fake-image", "image/png")},
+    )
+
+    assert response.status_code == 200
+    assert called["deleted"] is False
 
 
 def test_patch_me_uploads_photo_and_deletes_previous_public_image(
@@ -273,3 +425,33 @@ def test_get_all_users_forbidden_for_non_admin(clear_dependency_overrides):
     response = client.get("/users")
 
     assert response.status_code == 403
+
+
+def test_admin_endpoint_returns_payload(clear_dependency_overrides):
+    app.dependency_overrides[require_admin] = lambda: CurrentUser(
+        id=7,
+        role=RoleName.ADMIN,
+    )
+    client = TestClient(app)
+
+    response = client.get("/users/admin")
+
+    assert response.status_code == 200
+    assert response.json()["message"] == "admin access"
+    assert response.json()["user"]["id"] == 7
+
+
+def test_staff_endpoint_returns_payload(clear_dependency_overrides):
+    from app.core.security import require_staff
+
+    app.dependency_overrides[require_staff] = lambda: CurrentUser(
+        id=8,
+        role=RoleName.STAFF,
+    )
+    client = TestClient(app)
+
+    response = client.get("/users/staff")
+
+    assert response.status_code == 200
+    assert response.json()["message"] == "staff access"
+    assert response.json()["user"]["id"] == 8

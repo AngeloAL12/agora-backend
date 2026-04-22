@@ -285,6 +285,17 @@ def test_refresh_token_session_mismatch(mock_decode, db):
     assert response.status_code == 401
 
 
+@patch("app.routers.auth.auth.decode_token")
+def test_refresh_token_invalid_sub_value(mock_decode, db):
+    del db
+    mock_decode.return_value = {"type": "refresh", "sub": "abc"}
+
+    response = client.post("/auth/refresh", json={"refresh_token": "some-token"})
+
+    assert response.status_code == 401
+    assert "inválido" in response.json()["detail"]
+
+
 # ── /auth/logout ──────────────────────────────────────────────────────────────
 
 
@@ -360,6 +371,33 @@ def test_google_login_creates_new_session_when_none_exists(mock_verify, user_rol
     assert session.refresh_token is not None
 
 
+def test_dev_token_requires_secret_in_production(monkeypatch):
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "ENV", "production")
+    monkeypatch.setattr(settings, "API_TESTING_SECRET", "expected-secret")
+
+    response = client.get("/auth/dev-token", params={"testing_secret": "wrong-secret"})
+
+    assert response.status_code == 404
+
+
+def test_dev_token_returns_token_in_production_with_valid_secret(monkeypatch):
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "ENV", "production")
+    monkeypatch.setattr(settings, "API_TESTING_SECRET", "expected-secret")
+
+    response = client.get(
+        "/auth/dev-token",
+        params={"testing_secret": "expected-secret", "user_id": "22"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["token_type"] == "bearer"
+    assert "access_token" in response.json()
+
+
 def test_get_dev_token_returns_404_in_production_without_secret(monkeypatch):
     from app.core.config import settings
 
@@ -382,3 +420,45 @@ def test_get_dev_token_returns_token_in_production_with_secret(monkeypatch):
 
     assert response.status_code == 200
     assert "access_token" in response.json()
+
+
+def test_save_refresh_token_updates_existing_session(db, user_role):
+    """Test _save_refresh_token when session already exists (lines 37-39 of auth.py)."""
+    from datetime import UTC, datetime, timedelta
+
+    from app.models.auth.user import User
+    from app.models.auth.user_session import UserSession
+    from app.routers.auth.auth import _save_refresh_token
+
+    user = User(
+        name="Test",
+        email="test@itmexicali.edu.mx",
+        id_role=user_role.id,
+        oauth_provider="test",
+        oauth_sub="test-sub",
+        is_active=True,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    old_token = "old-refresh-token"
+    old_time = datetime.now(UTC) - timedelta(hours=1)
+    session = UserSession(
+        id_user=user.id,
+        refresh_token=old_token,
+        last_active_at=old_time,
+        expires_at=old_time + timedelta(days=7),
+    )
+    db.add(session)
+    db.commit()
+
+    old_last_active = session.last_active_at
+
+    new_token = "new-refresh-token"
+    _save_refresh_token(db, user.id, new_token)
+
+    db.refresh(session)
+
+    assert session.refresh_token == new_token
+    assert session.last_active_at != old_last_active

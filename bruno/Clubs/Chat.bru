@@ -1,0 +1,27 @@
+meta {
+  name: Chat
+  type: ws
+  seq: 11
+}
+
+ws {
+  url: {{base_url}}/clubs/{{club_id}}/chat?token={{auth_token}}
+  body: ws
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{auth_token}}
+}
+
+body:ws {
+  name: message 1
+  type: json
+  content: '''
+    {"content": "Hola a todos!"}
+  '''
+}
+
+vars:pre-request {
+  club_id: 1
+}
