@@ -1312,56 +1312,6 @@ def test_club_chat_websocket_missing_bearer_header_closes_4001(db):
     assert exc_info.value.code == 4001
 
 
-def test_club_chat_websocket_non_member_closes_4003(db):
-    category = create_category(db)
-    club = create_club(db, category.id, leader_id=1)
-    token_user_3 = create_access_token({"sub": "3"})
-
-    client = TestClient(app)
-
-    with client.websocket_connect(
-        f"/clubs/{club.id}/chat", headers={"authorization": f"Bearer {token_user_3}"}
-    ) as ws:
-        with pytest.raises(WebSocketDisconnect) as exc_info:
-            ws.receive_json()
-
-    assert exc_info.value.code == 4003
-
-
-def test_club_chat_websocket_no_auth_header_closes_4001(db):
-    category = create_category(db)
-    club = create_club(db, category.id, leader_id=1)
-
-    client = TestClient(app)
-
-    with client.websocket_connect(f"/clubs/{club.id}/chat") as ws:
-        with pytest.raises(WebSocketDisconnect) as exc_info:
-            ws.receive_json()
-
-    assert exc_info.value.code == 4001
-
-
-def test_club_chat_websocket_wrong_token_type_closes_4001(db, monkeypatch):
-    """Valida que se rechace un token con claim type 'refresh' en lugar de 'access'."""
-    category = create_category(db)
-    club = create_club(db, category.id, leader_id=1)
-
-    # Crear un token refresh (que tiene type: "refresh")
-    from app.core.security import create_refresh_token
-
-    refresh_token = create_refresh_token({"sub": "1"})
-
-    client = TestClient(app)
-
-    with client.websocket_connect(
-        f"/clubs/{club.id}/chat", headers={"authorization": f"Bearer {refresh_token}"}
-    ) as ws:
-        with pytest.raises(WebSocketDisconnect) as exc_info:
-            ws.receive_json()
-
-    assert exc_info.value.code == 4001
-
-
 def test_authenticate_ws_user_returns_none_for_invalid_sub(db, monkeypatch):
     def mock_decode(_):
         return {"sub": "abc", "type": "access"}
@@ -1801,24 +1751,6 @@ def test_notify_offline_members_large_content_preview(db, monkeypatch):
     # Preview should be truncated with ...
     assert len(pushes[0]["body"]) < len(f"{sender.name}: {long_content}")
     assert "..." in pushes[0]["body"]
-
-
-def test_club_chat_websocket_missing_bearer_header_closes_4001(db):
-    """Test that missing Bearer prefix in header closes connection with 4001."""
-    category = create_category(db)
-    club = create_club(db, category.id, leader_id=1)
-    token_user_1 = create_access_token({"sub": "1"})
-
-    client = TestClient(app)
-
-    # Send token without "Bearer " prefix
-    with client.websocket_connect(
-        f"/clubs/{club.id}/chat", headers={"authorization": token_user_1}
-    ) as ws:
-        with pytest.raises(WebSocketDisconnect) as exc_info:
-            ws.receive_json()
-
-    assert exc_info.value.code == 4001
 
 
 def test_build_image_url_with_key():
