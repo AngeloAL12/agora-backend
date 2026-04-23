@@ -43,11 +43,8 @@ class CacheService:
             return None, "miss"
         except (RedisError, TypeError, ValueError) as exc:
             logger.warning("Redis get failed for key %s: %s", key, exc)
-            return None, "bypass"
-
-    def get_json(self, key: str) -> dict[str, Any] | None:
-        value, _ = self.get_json_with_status(key)
-        return value
+            self._client = None
+            return None, "error"
 
     def set_json(self, key: str, value: dict[str, Any], ttl_seconds: int) -> None:
         client = self._get_client()
@@ -58,6 +55,7 @@ class CacheService:
             client.set(key, json.dumps(value), ex=ttl_seconds)
         except (RedisError, TypeError, ValueError) as exc:
             logger.warning("Redis set failed for key %s: %s", key, exc)
+            self._client = None
 
     def delete(self, key: str) -> None:
         client = self._get_client()
@@ -68,6 +66,7 @@ class CacheService:
             client.delete(key)
         except RedisError as exc:
             logger.warning("Redis delete failed for key %s: %s", key, exc)
+            self._client = None
 
 
 cache_service = CacheService()

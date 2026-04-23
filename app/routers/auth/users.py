@@ -110,6 +110,7 @@ def me(
 
 @router.patch("/me", response_model=UserMeResponse)
 async def update_my_profile(
+    response: Response,
     name: str | None = Form(None),
     id_career: int | None = Form(None),
     photo: UploadFile | None = File(None),
@@ -150,8 +151,9 @@ async def update_my_profile(
             f"users/{user.id}/photo",
         )
     db.commit()
-    db.refresh(user)
     cache_service.delete(_user_me_cache_key(current_user.id))
+    db.refresh(user)
+    response.headers["X-Cache"] = "BYPASS"
     if photo is not None and previous_key:
         await storage_service.delete_file(settings.R2_BUCKET_PUBLIC, previous_key)
     return {
