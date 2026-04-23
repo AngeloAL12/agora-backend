@@ -12,6 +12,7 @@ from app.core.database import get_db
 from app.core.roles import RoleName
 from app.models.auth.user import User
 from app.schemas.auth.auth import CurrentUser
+from app.services.cache_service import cache_service
 
 SECRET_KEY = settings.SECRET_KEY
 ALGORITHM = settings.ALGORITHM
@@ -19,6 +20,10 @@ ACCESS_TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
 REFRESH_TOKEN_EXPIRE_DAYS = settings.REFRESH_TOKEN_EXPIRE_DAYS
 
 security = HTTPBearer()
+
+
+def _auth_user_cache_key(user_id: int) -> str:
+    return f"auth:user:v1:{user_id}"
 
 
 class TokenDecodeError(Exception):
@@ -87,6 +92,11 @@ def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         ) from e
 
+    cache_key = _auth_user_cache_key(user_id)
+    cached, _ = cache_service.get_json_with_status(cache_key)
+    if cached is not None:
+        return CurrentUser(id=cached["id"], role=RoleName(cached["role_name"]))
+
     user = db.execute(select(User).where(User.id == user_id)).scalar_one_or_none()
 
     if not user:
@@ -107,6 +117,12 @@ def get_current_user(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Usuario sin rol asignado",
         )
+
+    cache_service.set_json(
+        cache_key,
+        {"id": user.id, "role_name": user.role.name, "is_active": user.is_active},
+        settings.AUTH_USER_CACHE_TTL_SECONDS,
+    )
 
     return CurrentUser(id=user.id, role=RoleName(user.role.name))
 

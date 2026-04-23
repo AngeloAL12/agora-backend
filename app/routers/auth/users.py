@@ -1,20 +1,39 @@
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Response,
+    UploadFile,
+    status,
+)
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.config import settings
 from app.core.database import get_db
-from app.core.security import get_current_user, require_admin, require_staff
+from app.core.security import (
+    _auth_user_cache_key,
+    get_current_user,
+    require_admin,
+    require_staff,
+)
 from app.models.auth.user import User
 from app.models.career import Career
 from app.schemas.auth.auth import CurrentUser
+from app.services.cache_service import cache_service
 from app.services.storage_service import storage_service
 
 router = APIRouter(prefix="/users", tags=["users"])
+
+
+def _user_me_cache_key(user_id: int) -> str:
+    return f"users:me:v1:{user_id}"
 
 
 def _photo_url(object_key: str | None) -> str | None:
@@ -28,6 +47,10 @@ def _photo_url(object_key: str | None) -> str | None:
 
 class CareerUpdateRequest(BaseModel):
     career_id: int
+
+
+class UserActiveRequest(BaseModel):
+    is_active: bool
 
 
 class UserMeResponse(BaseModel):
@@ -55,9 +78,16 @@ class UserListResponse(BaseModel):
 
 @router.get("/me", response_model=UserMeResponse)
 def me(
+    response: Response,
     current_user: CurrentUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    cache_key = _user_me_cache_key(current_user.id)
+    cached, cache_status = cache_service.get_json_with_status(cache_key)
+    response.headers["X-Cache"] = cache_status.upper()
+    if cached is not None:
+        return cached
+
     user = db.execute(
         select(User)
         .options(
@@ -72,7 +102,7 @@ def me(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Usuario no encontrado",
         )
-    return {
+    payload = {
         "id": user.id,
         "email": user.email,
         "role": current_user.role,
@@ -83,10 +113,13 @@ def me(
         "career": user.career.name if user.career else None,
         "photo": _photo_url(user.photo),
     }
+    cache_service.set_json(cache_key, payload, settings.USER_ME_CACHE_TTL_SECONDS)
+    return payload
 
 
 @router.patch("/me", response_model=UserMeResponse)
 async def update_my_profile(
+    response: Response,
     name: str | None = Form(None),
     id_career: int | None = Form(None),
     photo: UploadFile | None = File(None),
@@ -127,7 +160,10 @@ async def update_my_profile(
             f"users/{user.id}/photo",
         )
     db.commit()
+    cache_service.delete(_user_me_cache_key(current_user.id))
+    cache_service.delete(_auth_user_cache_key(current_user.id))
     db.refresh(user)
+    response.headers["X-Cache"] = "BYPASS"
     if photo is not None and previous_key:
         await storage_service.delete_file(settings.R2_BUCKET_PUBLIC, previous_key)
     return {
@@ -170,6 +206,8 @@ def update_my_career(
         )
     user.id_career = body.career_id
     db.commit()
+    cache_service.delete(_user_me_cache_key(current_user.id))
+    cache_service.delete(_auth_user_cache_key(current_user.id))
     return {"id_career": user.id_career}
 
 
@@ -190,3 +228,27 @@ def admin(user: CurrentUser = Depends(require_admin)):
 @router.get("/staff")
 def staff(user: CurrentUser = Depends(require_staff)):
     return {"message": "staff access", "user": user}
+
+
+@router.patch("/{user_id}/active")
+def set_user_active(
+    user_id: int,
+    body: UserActiveRequest,
+    _: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """
+    Activa o desactiva un usuario. Solo accesible por admin.
+    Invalida las entradas de cache de auth y perfil del usuario afectado.
+    """
+    user = db.execute(select(User).where(User.id == user_id)).scalar_one_or_none()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Usuario no encontrado",
+        )
+    user.is_active = body.is_active
+    db.commit()
+    cache_service.delete(_auth_user_cache_key(user_id))
+    cache_service.delete(_user_me_cache_key(user_id))
+    return {"id": user_id, "is_active": user.is_active}
