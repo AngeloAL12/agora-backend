@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 from asyncio import CancelledError, Task, create_task
@@ -25,6 +26,9 @@ class RedisChatManager:
 
     async def connect_redis(self) -> None:
         """Conecta al servidor Redis."""
+        if not settings.REDIS_URL:
+            logger.info("REDIS_URL no configurado; usando solo conexiones locales")
+            return
         try:
             redis_kwargs = {
                 "encoding": "utf-8",
@@ -55,12 +59,18 @@ class RedisChatManager:
         self._listener_tasks.clear()
 
         for pubsub in self._pubsubs.values():
-            await pubsub.close()
+            try:
+                await asyncio.wait_for(pubsub.close(), timeout=2.0)
+            except (TimeoutError, Exception) as e:
+                logger.debug(f"pubsub.close() ignorado: {e}")
 
         self._pubsubs.clear()
 
         if self.redis_client:
-            await self.redis_client.close()
+            try:
+                await asyncio.wait_for(self.redis_client.close(), timeout=2.0)
+            except (TimeoutError, Exception) as e:
+                logger.debug(f"redis_client.close() ignorado: {e}")
             self.redis_client = None
             logger.info("Desconectado de Redis")
 

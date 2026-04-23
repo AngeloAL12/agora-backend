@@ -16,10 +16,11 @@ class Settings(BaseSettings):
     MICROSOFT_TENANT_ID: str = ""
 
     API_TESTING_SECRET: str | None = None
-    REDIS_URL: str = "redis://localhost:6379/0"
+    REDIS_URL: str | None = None
     REDIS_SOCKET_CONNECT_TIMEOUT: float = 2.0
     REDIS_SOCKET_TIMEOUT: float | None = None
     REDIS_HEALTH_CHECK_INTERVAL: int = 30
+    REDIS_TIMEOUT_SECONDS: float = 0.1
 
     R2_ACCOUNT_ID: str
     R2_ACCESS_KEY_ID: str
@@ -29,10 +30,8 @@ class Settings(BaseSettings):
     R2_BUCKET_PRIVATE: str
     R2_BUCKET_PUBLIC: str
     R2_PUBLIC_URL: str | None = None
-    REDIS_URL: str | None = None
     USER_ME_CACHE_TTL_SECONDS: int = 60
     AUTH_USER_CACHE_TTL_SECONDS: int = 300
-    REDIS_TIMEOUT_SECONDS: float = 0.1
 
     @model_validator(mode="after")
     def set_r2_endpoint(self) -> "Settings":

@@ -18,7 +18,7 @@ def test_settings_loaded(monkeypatch):
 
     assert settings.DATABASE_URL == "postgresql://test"
     assert settings.SECRET_KEY == "test"
-    assert settings.REDIS_URL == "redis://localhost:6379/0"
+    assert settings.REDIS_URL is None
 
 
 def test_r2_endpoint_derived_from_account_id(monkeypatch):
