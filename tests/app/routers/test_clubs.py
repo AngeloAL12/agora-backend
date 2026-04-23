@@ -1235,10 +1235,78 @@ def test_club_chat_websocket_invalid_token_closes_4001(db):
 
     client = TestClient(app)
 
-    with client.websocket_connect(
-        f"/clubs/{club.id}/chat", headers={"authorization": "Bearer invalido"}
-    ) as ws:
-        with pytest.raises(WebSocketDisconnect) as exc_info:
+    with pytest.raises(WebSocketDisconnect) as exc_info:
+        with client.websocket_connect(
+            f"/clubs/{club.id}/chat", headers={"authorization": "Bearer invalido"}
+        ) as ws:
+            ws.receive_json()
+
+    assert exc_info.value.code == 4001
+
+
+def test_club_chat_websocket_non_member_closes_4003(db):
+    category = create_category(db)
+    club = create_club(db, category.id, leader_id=1)
+    token_user_3 = create_access_token({"sub": "3"})
+
+    client = TestClient(app)
+
+    with pytest.raises(WebSocketDisconnect) as exc_info:
+        with client.websocket_connect(
+            f"/clubs/{club.id}/chat",
+            headers={"authorization": f"Bearer {token_user_3}"},
+        ) as ws:
+            ws.receive_json()
+
+    assert exc_info.value.code == 4003
+
+
+def test_club_chat_websocket_no_auth_header_closes_4001(db):
+    category = create_category(db)
+    club = create_club(db, category.id, leader_id=1)
+
+    client = TestClient(app)
+
+    with pytest.raises(WebSocketDisconnect) as exc_info:
+        with client.websocket_connect(f"/clubs/{club.id}/chat") as ws:
+            ws.receive_json()
+
+    assert exc_info.value.code == 4001
+
+
+def test_club_chat_websocket_wrong_token_type_closes_4001(db, monkeypatch):
+    """Valida que se rechace un token con claim type 'refresh' en lugar de 'access'."""
+    category = create_category(db)
+    club = create_club(db, category.id, leader_id=1)
+
+    # Crear un token refresh (que tiene type: "refresh")
+    from app.core.security import create_refresh_token
+
+    refresh_token = create_refresh_token({"sub": "1"})
+
+    client = TestClient(app)
+
+    with pytest.raises(WebSocketDisconnect) as exc_info:
+        with client.websocket_connect(
+            f"/clubs/{club.id}/chat",
+            headers={"authorization": f"Bearer {refresh_token}"},
+        ) as ws:
+            ws.receive_json()
+
+    assert exc_info.value.code == 4001
+
+
+def test_club_chat_websocket_missing_bearer_header_closes_4001(db):
+    category = create_category(db)
+    club = create_club(db, category.id, leader_id=1)
+    token_user_1 = create_access_token({"sub": "1"})
+
+    client = TestClient(app)
+
+    with pytest.raises(WebSocketDisconnect) as exc_info:
+        with client.websocket_connect(
+            f"/clubs/{club.id}/chat", headers={"authorization": token_user_1}
+        ) as ws:
             ws.receive_json()
 
     assert exc_info.value.code == 4001
@@ -1552,12 +1620,11 @@ def test_websocket_invalid_token_closes(db):
 
     client = TestClient(app)
 
-    try:
-        url = f"/clubs/{club.id}/chat?token=invalid-token"
+    url = f"/clubs/{club.id}/chat?token=invalid-token"
+    with pytest.raises(WebSocketDisconnect) as exc_info:
         with client.websocket_connect(url) as ws:
             ws.receive_json()
-    except Exception:
-        pass
+    assert exc_info.value.code in [4001, 1006]
 
 
 def test_websocket_non_member_closes(db):
@@ -1569,12 +1636,11 @@ def test_websocket_non_member_closes(db):
 
     client = TestClient(app)
 
-    try:
-        url = f"/clubs/{club.id}/chat?token={token_user_2}"
+    url = f"/clubs/{club.id}/chat?token={token_user_2}"
+    with pytest.raises(WebSocketDisconnect) as exc_info:
         with client.websocket_connect(url) as ws:
             ws.receive_json()
-    except Exception:
-        pass
+    assert exc_info.value.code in [4003, 1006]
 
 
 def test_update_event_all_optional_fields_none(db, clear_dependency_overrides):
