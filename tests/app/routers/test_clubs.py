@@ -57,6 +57,27 @@ def clear_overrides():
     app.dependency_overrides.pop(get_current_user, None)
 
 
+@pytest.fixture(autouse=True)
+def disable_redis_lifespan_for_clubs_tests(monkeypatch):
+    async def _noop_connect():
+        redis_chat_manager.redis_client = None
+
+    async def _noop_disconnect():
+        redis_chat_manager.redis_client = None
+        redis_chat_manager._local_connections.clear()
+        redis_chat_manager._pubsubs.clear()
+        redis_chat_manager._listener_tasks.clear()
+
+    monkeypatch.setattr(redis_chat_manager, "connect_redis", _noop_connect)
+    monkeypatch.setattr(redis_chat_manager, "disconnect_redis", _noop_disconnect)
+
+    redis_chat_manager.redis_client = None
+    redis_chat_manager._local_connections.clear()
+    yield
+    redis_chat_manager.redis_client = None
+    redis_chat_manager._local_connections.clear()
+
+
 def override_user(user_id=1):
     return lambda: CurrentUser(id=user_id, role=RoleName.USER)
 

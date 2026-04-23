@@ -10,7 +10,7 @@ from app.models.career import Career
 from app.schemas.auth.auth import CurrentUser
 
 
-def test_me_returns_current_user(db, clear_dependency_overrides):
+def test_me_returns_current_user(db, clear_dependency_overrides, monkeypatch):
     role = db.query(Role).filter(Role.name == RoleName.USER).one_or_none()
     if not role:
         role = Role(name=RoleName.USER)
@@ -31,13 +31,23 @@ def test_me_returns_current_user(db, clear_dependency_overrides):
         id=user.id,
         role=RoleName.USER,
     )
+
+    monkeypatch.setattr(
+        "app.routers.auth.users.cache_service.get_json_with_status",
+        lambda _key: (None, "bypass"),
+    )
+    monkeypatch.setattr(
+        "app.routers.auth.users.cache_service.set_json",
+        lambda _key, _value, _ttl: None,
+    )
+
     client = TestClient(app)
 
     response = client.get("/users/me")
 
-    # In tests without a real Redis server, the cache service should return BYPASS
+    # Keep this test deterministic and independent from external Redis state.
     assert response.status_code == 200
-    assert response.headers["x-cache"] in ["MISS", "BYPASS"]
+    assert response.headers["x-cache"] == "BYPASS"
     assert response.json() == {
         "id": user.id,
         "email": "test@itmexicali.edu.mx",
