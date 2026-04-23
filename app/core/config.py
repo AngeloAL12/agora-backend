@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     R2_BUCKET_PRIVATE: str
     R2_BUCKET_PUBLIC: str
     R2_PUBLIC_URL: str | None = None
+    REDIS_URL: str | None = None
+    USER_ME_CACHE_TTL_SECONDS: int = 60
+    REDIS_TIMEOUT_SECONDS: float = 0.1
 
     @model_validator(mode="after")
     def set_r2_endpoint(self) -> "Settings":
