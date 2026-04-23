@@ -43,10 +43,17 @@ def upgrade() -> None:
     op.create_index(
         op.f("ix_club_message_id_user"), "club_message", ["id_user"], unique=False
     )
+    op.create_index(
+        "ix_club_message_club_created",
+        "club_message",
+        ["id_club", "created_at"],
+        unique=False,
+    )
 
 
 def downgrade() -> None:
     """Downgrade schema."""
+    op.drop_index("ix_club_message_club_created", table_name="club_message")
     op.drop_index(op.f("ix_club_message_id_user"), table_name="club_message")
     op.drop_index(op.f("ix_club_message_id_club"), table_name="club_message")
     op.drop_table("club_message")

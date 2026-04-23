@@ -1,5 +1,6 @@
 import json
 import logging
+from asyncio import CancelledError, Task, create_task
 from collections.abc import Callable
 
 import redis.asyncio as redis
@@ -20,6 +21,7 @@ class RedisChatManager:
         self.redis_client: redis.Redis | None = None
         self._local_connections: dict[str, set] = {}
         self._pubsubs: dict[str, PubSub] = {}
+        self._listener_tasks: dict[str, Task] = {}
 
     async def connect_redis(self) -> None:
         """Conecta al servidor Redis."""
@@ -38,6 +40,16 @@ class RedisChatManager:
 
     async def disconnect_redis(self) -> None:
         """Desconecta del servidor Redis."""
+        for task in self._listener_tasks.values():
+            task.cancel()
+
+        self._listener_tasks.clear()
+
+        for pubsub in self._pubsubs.values():
+            await pubsub.close()
+
+        self._pubsubs.clear()
+
         if self.redis_client:
             await self.redis_client.close()
             self.redis_client = None
@@ -84,6 +96,9 @@ class RedisChatManager:
                 pubsub = self.redis_client.pubsub()
                 await pubsub.subscribe(channel)
                 self._pubsubs[channel] = pubsub
+                self._listener_tasks[channel] = create_task(
+                    self._listen(channel, pubsub)
+                )
 
             return self._pubsubs[channel]
         except Exception as e:
@@ -93,11 +108,27 @@ class RedisChatManager:
     async def unsubscribe(self, club_id: int, user_id: int, callback: Callable) -> None:
         """Desuscribe del canal de un club."""
         user_key = self._get_user_key(club_id, user_id)
+        channel = self._get_channel_key(club_id)
 
         if user_key in self._local_connections:
             self._local_connections[user_key].discard(callback)
             if not self._local_connections[user_key]:
                 del self._local_connections[user_key]
+
+        has_local_subscribers = any(
+            local_key.startswith(f"{club_id}:")
+            for local_key in self._local_connections.keys()
+        )
+
+        if has_local_subscribers:
+            return
+
+        if task := self._listener_tasks.pop(channel, None):
+            task.cancel()
+
+        if pubsub := self._pubsubs.pop(channel, None):
+            await pubsub.unsubscribe(channel)
+            await pubsub.close()
 
     async def publish_message(self, club_id: int, message: dict) -> None:
         """
@@ -108,18 +139,48 @@ class RedisChatManager:
             message: Diccionario con los datos del mensaje
         """
         channel = self._get_channel_key(club_id)
-        message_json = json.dumps(message)
 
         # Publicar a Redis si está disponible
         if self.redis_client:
             try:
+                message_json = json.dumps(message)
                 await self.redis_client.publish(channel, message_json)
+                return
             except Exception as e:
                 logger.error(f"Error publicando a Redis: {e}")
                 logger.info("Fallback a broadcast local")
 
         # Sempre hacer broadcast local
         await self._broadcast_local(club_id, message)
+
+    async def _listen(self, channel: str, pubsub: PubSub) -> None:
+        """Escucha mensajes Redis de un canal y los rebroadcast localmente."""
+        try:
+            async for message in pubsub.listen():
+                if message.get("type") != "message":
+                    continue
+
+                payload = message.get("data")
+                if not payload:
+                    continue
+
+                try:
+                    decoded = json.loads(payload)
+                except json.JSONDecodeError:
+                    logger.error("Mensaje Redis inválido en canal %s", channel)
+                    continue
+
+                club_id = decoded.get("id_club")
+                if club_id is None:
+                    logger.error("Mensaje Redis sin id_club en canal %s", channel)
+                    continue
+
+                await self._broadcast_local(int(club_id), decoded)
+        except CancelledError:
+            logger.debug("Listener Redis cancelado para canal %s", channel)
+            raise
+        except Exception as e:
+            logger.error(f"Error escuchando canal Redis {channel}: {e}")
 
     async def _broadcast_local(self, club_id: int, message: dict) -> None:
         """Hace broadcast a todas las conexiones locales de un club."""
