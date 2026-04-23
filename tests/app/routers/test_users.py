@@ -2,7 +2,7 @@ from fastapi.testclient import TestClient
 
 from app.core.config import settings
 from app.core.roles import RoleName
-from app.core.security import get_current_user, require_admin
+from app.core.security import _auth_user_cache_key, get_current_user, require_admin
 from app.main import app
 from app.models.auth.role import Role
 from app.models.auth.user import User
@@ -237,7 +237,8 @@ def test_patch_me_invalidates_user_me_cache(
     response = client.patch("/users/me", data={"name": "Updated"})
 
     assert response.status_code == 200
-    assert deleted_keys == [f"users:me:v1:{user.id}"]
+    assert f"users:me:v1:{user.id}" in deleted_keys
+    assert f"auth:user:v1:{user.id}" in deleted_keys
 
 
 def test_patch_me_uploads_photo_and_deletes_previous_public_image(
@@ -418,7 +419,8 @@ def test_update_my_career_invalidates_user_me_cache(
     response = client.patch("/users/me/career", json={"career_id": career.id})
 
     assert response.status_code == 200
-    assert deleted_keys == [f"users:me:v1:{user.id}"]
+    assert f"users:me:v1:{user.id}" in deleted_keys
+    assert f"auth:user:v1:{user.id}" in deleted_keys
 
 
 # ── GET /users ───────────────────────────────────────────────────────────────
@@ -464,3 +466,138 @@ def test_get_all_users_forbidden_for_non_admin(clear_dependency_overrides):
     response = client.get("/users")
 
     assert response.status_code == 403
+
+
+# ── PATCH /users/{user_id}/active ────────────────────────────────────────────
+
+
+def test_set_user_active_deactivate_success(
+    db, clear_dependency_overrides, monkeypatch
+):
+    role = db.query(Role).filter(Role.name == RoleName.USER).one_or_none()
+    if not role:
+        role = Role(name=RoleName.USER)
+        db.add(role)
+        db.commit()
+
+    user = User(
+        email="deactivate@itmexicali.edu.mx",
+        name="Deactivate User",
+        oauth_provider="google",
+        oauth_sub="deactivate-1",
+        id_role=role.id,
+        is_active=True,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    app.dependency_overrides[require_admin] = lambda: CurrentUser(
+        id=999, role=RoleName.ADMIN
+    )
+    monkeypatch.setattr(
+        "app.routers.auth.users.cache_service.delete", lambda _key: None
+    )
+
+    client = TestClient(app)
+    response = client.patch(f"/users/{user.id}/active", json={"is_active": False})
+
+    assert response.status_code == 200
+    assert response.json() == {"id": user.id, "is_active": False}
+    db.refresh(user)
+    assert user.is_active is False
+
+
+def test_set_user_active_activate_success(db, clear_dependency_overrides, monkeypatch):
+    role = db.query(Role).filter(Role.name == RoleName.USER).one_or_none()
+    if not role:
+        role = Role(name=RoleName.USER)
+        db.add(role)
+        db.commit()
+
+    user = User(
+        email="activate@itmexicali.edu.mx",
+        name="Activate User",
+        oauth_provider="google",
+        oauth_sub="activate-1",
+        id_role=role.id,
+        is_active=False,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    app.dependency_overrides[require_admin] = lambda: CurrentUser(
+        id=999, role=RoleName.ADMIN
+    )
+    monkeypatch.setattr(
+        "app.routers.auth.users.cache_service.delete", lambda _key: None
+    )
+
+    client = TestClient(app)
+    response = client.patch(f"/users/{user.id}/active", json={"is_active": True})
+
+    assert response.status_code == 200
+    assert response.json() == {"id": user.id, "is_active": True}
+    db.refresh(user)
+    assert user.is_active is True
+
+
+def test_set_user_active_not_found(clear_dependency_overrides):
+    app.dependency_overrides[require_admin] = lambda: CurrentUser(
+        id=999, role=RoleName.ADMIN
+    )
+    client = TestClient(app)
+    response = client.patch("/users/9999/active", json={"is_active": False})
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Usuario no encontrado"
+
+
+def test_set_user_active_forbidden_for_non_admin(clear_dependency_overrides):
+    app.dependency_overrides[get_current_user] = lambda: CurrentUser(
+        id=1, role=RoleName.USER
+    )
+    client = TestClient(app)
+    response = client.patch("/users/1/active", json={"is_active": False})
+
+    assert response.status_code == 403
+
+
+def test_set_user_active_invalidates_both_cache_keys(
+    db, clear_dependency_overrides, monkeypatch
+):
+    role = db.query(Role).filter(Role.name == RoleName.USER).one_or_none()
+    if not role:
+        role = Role(name=RoleName.USER)
+        db.add(role)
+        db.commit()
+
+    user = User(
+        email="cache-invalidate-active@itmexicali.edu.mx",
+        name="Cache Active User",
+        oauth_provider="google",
+        oauth_sub="cache-active-1",
+        id_role=role.id,
+        is_active=True,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    app.dependency_overrides[require_admin] = lambda: CurrentUser(
+        id=999, role=RoleName.ADMIN
+    )
+
+    deleted_keys = []
+    monkeypatch.setattr(
+        "app.routers.auth.users.cache_service.delete",
+        lambda key: deleted_keys.append(key),
+    )
+
+    client = TestClient(app)
+    response = client.patch(f"/users/{user.id}/active", json={"is_active": False})
+
+    assert response.status_code == 200
+    assert _auth_user_cache_key(user.id) in deleted_keys
+    assert f"users:me:v1:{user.id}" in deleted_keys

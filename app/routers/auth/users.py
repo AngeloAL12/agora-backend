@@ -17,7 +17,12 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.core.config import settings
 from app.core.database import get_db
-from app.core.security import get_current_user, require_admin, require_staff
+from app.core.security import (
+    _auth_user_cache_key,
+    get_current_user,
+    require_admin,
+    require_staff,
+)
 from app.models.auth.user import User
 from app.models.career import Career
 from app.schemas.auth.auth import CurrentUser
@@ -42,6 +47,10 @@ def _photo_url(object_key: str | None) -> str | None:
 
 class CareerUpdateRequest(BaseModel):
     career_id: int
+
+
+class UserActiveRequest(BaseModel):
+    is_active: bool
 
 
 class UserMeResponse(BaseModel):
@@ -152,6 +161,7 @@ async def update_my_profile(
         )
     db.commit()
     cache_service.delete(_user_me_cache_key(current_user.id))
+    cache_service.delete(_auth_user_cache_key(current_user.id))
     db.refresh(user)
     response.headers["X-Cache"] = "BYPASS"
     if photo is not None and previous_key:
@@ -197,6 +207,7 @@ def update_my_career(
     user.id_career = body.career_id
     db.commit()
     cache_service.delete(_user_me_cache_key(current_user.id))
+    cache_service.delete(_auth_user_cache_key(current_user.id))
     return {"id_career": user.id_career}
 
 
@@ -217,3 +228,27 @@ def admin(user: CurrentUser = Depends(require_admin)):
 @router.get("/staff")
 def staff(user: CurrentUser = Depends(require_staff)):
     return {"message": "staff access", "user": user}
+
+
+@router.patch("/{user_id}/active")
+def set_user_active(
+    user_id: int,
+    body: UserActiveRequest,
+    _: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """
+    Activa o desactiva un usuario. Solo accesible por admin.
+    Invalida las entradas de cache de auth y perfil del usuario afectado.
+    """
+    user = db.execute(select(User).where(User.id == user_id)).scalar_one_or_none()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Usuario no encontrado",
+        )
+    user.is_active = body.is_active
+    db.commit()
+    cache_service.delete(_auth_user_cache_key(user_id))
+    cache_service.delete(_user_me_cache_key(user_id))
+    return {"id": user_id, "is_active": user.is_active}
