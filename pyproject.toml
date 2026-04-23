@@ -30,6 +30,7 @@ dev = [
     "pytest>=9.0.2",
     "pytest-asyncio>=1.3.0",
     "pytest-cov>=7.0.0",
+    "pytest-timeout>=2.3.1",
     "ruff>=0.15.6",
 ]
 
@@ -48,6 +49,7 @@ ignore = ["B008"]  # FastAPI Depends() in default arguments is intentional
 asyncio_mode = "auto"
 testpaths = ["tests"]
 pythonpath = ["."]
+timeout = 30
 addopts = [
     "--cov=.",              # Mide la raíz del proyecto
     "--cov-report=term-missing", # Muestra líneas faltantes en consola

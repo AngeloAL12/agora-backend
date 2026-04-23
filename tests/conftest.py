@@ -8,6 +8,7 @@ from sqlalchemy.pool import StaticPool
 from app.core.database import Base, get_db
 from app.main import app
 from app.models.auth.role import Role
+from app.services.redis_service import redis_chat_manager
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///:memory:")
 SECRET_KEY = os.getenv("SECRET_KEY", "test-secret-key")
@@ -77,6 +78,39 @@ def clean_db(db):
 def clear_dependency_overrides():
     yield
     app.dependency_overrides.clear()
+
+
+@pytest.fixture(autouse=True)
+def disable_redis_globally(monkeypatch):
+    """Force redis_chat_manager into local-only mode for every test.
+
+    In CI a real Redis service is available (REDIS_URL is set), so
+    connect_redis() would succeed and start a real pub/sub listener.
+    That listener can cause receive_json() calls to hang indefinitely
+    if the publish arrives before the subscriber is ready.
+    Patching both lifecycle methods keeps all tests independent of Redis.
+    """
+
+    async def _noop_connect():
+        redis_chat_manager.redis_client = None
+
+    async def _noop_disconnect():
+        redis_chat_manager.redis_client = None
+        redis_chat_manager._local_connections.clear()
+        redis_chat_manager._pubsubs.clear()
+        redis_chat_manager._listener_tasks.clear()
+
+    monkeypatch.setattr(redis_chat_manager, "connect_redis", _noop_connect)
+    monkeypatch.setattr(redis_chat_manager, "disconnect_redis", _noop_disconnect)
+
+    # Ensure any previously leaked real connection is dropped immediately.
+    redis_chat_manager.redis_client = None
+    redis_chat_manager._local_connections.clear()
+
+    yield
+
+    redis_chat_manager.redis_client = None
+    redis_chat_manager._local_connections.clear()
 
 
 @pytest.fixture
