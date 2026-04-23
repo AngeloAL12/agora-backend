@@ -1202,9 +1202,9 @@ def test_get_club_messages_paginated(db):
     assert response.status_code == 200
     data = response.json()
     assert len(data) == 2
-    assert data[0]["content"] == "mensaje-2"
-    assert data[1]["content"] == "mensaje-3"
-    assert data[1]["user"]["name"] == "User 1"
+    assert data[0]["content"] == "mensaje-3"
+    assert data[1]["content"] == "mensaje-2"
+    assert data[0]["user"]["name"] == "User 1"
 
 
 def test_club_chat_websocket_persists_and_broadcasts(db):

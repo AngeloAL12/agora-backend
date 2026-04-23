@@ -344,25 +344,14 @@ def get_club_messages(
 
     _verify_membership(club, current_user.id, db, require_leader=False)
 
-    total_messages = (
-        db.query(ClubMessage).filter(ClubMessage.id_club == club_id).count()
-    )
-    desc_offset = (page - 1) * limit
-    asc_start = max(total_messages - (desc_offset + limit), 0)
-    asc_end = total_messages - desc_offset
-    page_size = max(min(limit, asc_end - asc_start), 0)
-
-    if page_size == 0:
-        return []
-
     messages = (
         db.execute(
             select(ClubMessage)
             .options(joinedload(ClubMessage.user))
             .where(ClubMessage.id_club == club_id)
-            .order_by(ClubMessage.created_at.asc(), ClubMessage.id.asc())
-            .offset(asc_start)
-            .limit(page_size)
+            .order_by(ClubMessage.created_at.desc(), ClubMessage.id.desc())
+            .offset((page - 1) * limit)
+            .limit(limit)
         )
         .scalars()
         .all()
