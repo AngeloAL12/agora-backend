@@ -1,7 +1,7 @@
 import os
 
 import pytest
-from sqlalchemy import create_engine, event, text
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -65,16 +65,11 @@ def db():
 
 @pytest.fixture(autouse=True)
 def clean_db(db):
-    if DATABASE_URL.startswith("sqlite"):
-        for table in reversed(Base.metadata.sorted_tables):
-            db.execute(table.delete())
-        db.commit()
-    else:
-        table_names = ", ".join(
-            f'"{t.name}"' for t in reversed(Base.metadata.sorted_tables)
-        )
-        db.execute(text(f"TRUNCATE {table_names} RESTART IDENTITY CASCADE"))
-        db.commit()
+    # DELETE FROM does not require ACCESS EXCLUSIVE LOCK (unlike TRUNCATE),
+    # so it never blocks on open transactions from WebSocket endpoints.
+    for table in reversed(Base.metadata.sorted_tables):
+        db.execute(table.delete())
+    db.commit()
     yield
 
 

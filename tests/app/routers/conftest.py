@@ -2,6 +2,7 @@ import pytest
 
 import app.core.database as db_module
 import app.routers.complaints as complaints_module
+from app.services.redis_service import redis_chat_manager
 from tests.conftest import TestingSessionLocal
 
 
@@ -11,6 +12,28 @@ def patch_session_local():
     db_module.SessionLocal = TestingSessionLocal
     yield
     db_module.SessionLocal = original
+
+
+@pytest.fixture(autouse=True)
+def reset_redis_chat_manager():
+    """Clear global redis_chat_manager state between tests.
+
+    The manager holds _local_connections and _listener_tasks as module-level
+    state. Stale entries from a previous WebSocket test can leak into the next
+    test and keep background asyncio Tasks alive, which in turn hold open DB
+    connections and prevent PostgreSQL DELETE/TRUNCATE from acquiring locks.
+    """
+    redis_chat_manager._local_connections.clear()
+    redis_chat_manager._pubsubs.clear()
+    for task in redis_chat_manager._listener_tasks.values():
+        task.cancel()
+    redis_chat_manager._listener_tasks.clear()
+    yield
+    redis_chat_manager._local_connections.clear()
+    redis_chat_manager._pubsubs.clear()
+    for task in redis_chat_manager._listener_tasks.values():
+        task.cancel()
+    redis_chat_manager._listener_tasks.clear()
 
 
 @pytest.fixture(autouse=True)
