@@ -25,6 +25,7 @@ from app.routers.clubs import (
     _notify_offline_members,
 )
 from app.schemas.auth.auth import CurrentUser
+from app.services.redis_service import redis_chat_manager
 from app.services.storage_service import storage_service
 
 
@@ -1204,17 +1205,28 @@ def test_club_chat_websocket_persists_and_broadcasts(db):
 
     client = TestClient(app)
 
-    with client.websocket_connect(
-        f"/clubs/{club.id}/chat", headers={"authorization": f"Bearer {token_user_1}"}
-    ) as ws_1:
+    # Evita dependencia de Redis externo.
+    # Usa broadcast local para estabilidad en CI/hooks.
+    previous_redis_client = redis_chat_manager.redis_client
+    redis_chat_manager.redis_client = None
+    redis_chat_manager._local_connections.clear()
+
+    try:
         with client.websocket_connect(
             f"/clubs/{club.id}/chat",
-            headers={"authorization": f"Bearer {token_user_2}"},
-        ) as ws_2:
-            ws_1.send_json({"content": "Hola a todos!"})
+            headers={"authorization": f"Bearer {token_user_1}"},
+        ) as ws_1:
+            with client.websocket_connect(
+                f"/clubs/{club.id}/chat",
+                headers={"authorization": f"Bearer {token_user_2}"},
+            ) as ws_2:
+                ws_1.send_json({"content": "Hola a todos!"})
 
-            payload_1 = ws_1.receive_json()
-            payload_2 = ws_2.receive_json()
+                payload_1 = ws_1.receive_json()
+                payload_2 = ws_2.receive_json()
+    finally:
+        redis_chat_manager.redis_client = previous_redis_client
+        redis_chat_manager._local_connections.clear()
 
     assert payload_1["content"] == "Hola a todos!"
     assert payload_1["user"]["id"] == 1
