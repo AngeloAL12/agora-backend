@@ -58,7 +58,7 @@ class StorageService:
         try:
             async with self._session.client(
                 "s3", endpoint_url=self._endpoint_url
-            ) as s3:
+            ) as s3: # type: ignore
                 url = await s3.generate_presigned_url(
                     ClientMethod="get_object",
                     Params={"Bucket": bucket_name, "Key": object_key},

@@ -834,3 +834,46 @@ def test_delete_event_not_found(db, clear_dependency_overrides):
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Evento no encontrado"
+
+
+# --- Tests de Publicaciones ---
+
+
+def test_get_club_posts_empty(db, clear_dependency_overrides):
+    app.dependency_overrides[get_current_user] = override_user(1)
+
+    category = create_category(db)
+    club = create_club(db, category.id, leader_id=1)
+    create_membership(db, club.id, 1)
+
+    client = TestClient(app)
+    response = client.get(f"/clubs/{club.id}/posts")
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_create_club_post(db, clear_dependency_overrides):
+    app.dependency_overrides[get_current_user] = override_user(1)
+
+    category = create_category(db)
+    club = create_club(db, category.id, leader_id=1)
+
+    client = TestClient(app)
+    response = client.post(
+        f"/clubs/{club.id}/posts",
+        json={
+            "content": "Nueva publicación",
+            "images": ["https://example.com/img1.jpg"],
+        },
+    )
+
+    assert response.status_code == 201
+    data = response.json()
+    assert data["content"] == "Nueva publicación"
+    assert data["id_club"] == club.id
+    assert data["like_count"] == 0
+    assert data["user_has_liked"] is False
+    assert data["comment_count"] == 0
+    assert len(data["images"]) == 1
+    assert data["author"]["id"] == 1
