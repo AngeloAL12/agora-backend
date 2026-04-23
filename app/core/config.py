@@ -16,6 +16,10 @@ class Settings(BaseSettings):
     MICROSOFT_TENANT_ID: str = ""
 
     API_TESTING_SECRET: str | None = None
+    REDIS_URL: str = "redis://localhost:6379/0"
+    REDIS_SOCKET_CONNECT_TIMEOUT: float = 2.0
+    REDIS_SOCKET_TIMEOUT: float | None = None
+    REDIS_HEALTH_CHECK_INTERVAL: int = 30
 
     R2_ACCOUNT_ID: str
     R2_ACCESS_KEY_ID: str

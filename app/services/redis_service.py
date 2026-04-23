@@ -26,10 +26,19 @@ class RedisChatManager:
     async def connect_redis(self) -> None:
         """Conecta al servidor Redis."""
         try:
+            redis_kwargs = {
+                "encoding": "utf-8",
+                "decode_responses": True,
+                "socket_connect_timeout": settings.REDIS_SOCKET_CONNECT_TIMEOUT,
+                "health_check_interval": settings.REDIS_HEALTH_CHECK_INTERVAL,
+            }
+
+            if settings.REDIS_SOCKET_TIMEOUT is not None:
+                redis_kwargs["socket_timeout"] = settings.REDIS_SOCKET_TIMEOUT
+
             self.redis_client = await redis.from_url(
                 settings.REDIS_URL,
-                encoding="utf-8",
-                decode_responses=True,
+                **redis_kwargs,
             )
             await self.redis_client.ping()
             logger.info("Conectado a Redis exitosamente")

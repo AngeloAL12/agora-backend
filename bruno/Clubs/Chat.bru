@@ -5,7 +5,7 @@ meta {
 }
 
 ws {
-  url: {{base_url}}/clubs/{{club_id}}/chat
+  url: {{base_url}}/clubs/{{club_id}}/chat?token={{auth_token}}
   body: ws
   auth: bearer
 }
@@ -18,7 +18,7 @@ body:ws {
   name: message 1
   type: json
   content: '''
-    {"content": "Hola a todos!"}
+    {"content": "que tal"}
   '''
 }
 

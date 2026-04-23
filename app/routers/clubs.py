@@ -131,22 +131,22 @@ def _is_club_member(club: Club, user_id: int, db: Session) -> bool:
     return membership is not None
 
 
-def _authenticate_ws_user_from_headers(
-    headers: dict[str, str], db: Session
+def _authenticate_ws_user(
+    headers: dict[str, str], db: Session, token: str | None = None
 ) -> User | None:
-    """Autentica usuario desde headers del WebSocket.
+    """Autentica usuario para WebSocket desde header o query token.
 
     Valida que:
-    - Exista Authorization header con formato 'Bearer <token>'
+    - Exista Authorization header con formato 'Bearer <token>' o token por query
     - El token sea válido
     - El claim type sea estrictamente 'access'
     - El usuario exista y esté activo
     """
-    auth_header = headers.get("authorization", "")
-    if not auth_header.startswith("Bearer "):
-        return None
-
-    token = auth_header[7:]  # Remover "Bearer "
+    if token is None:
+        auth_header = headers.get("authorization", "")
+        if not auth_header.startswith("Bearer "):
+            return None
+        token = auth_header[7:]  # Remover "Bearer "
 
     try:
         payload = decode_access_token(token)
@@ -188,7 +188,22 @@ def _authenticate_ws_user_id_from_headers(
     headers: dict[str, str], db: Session
 ) -> int | None:
     """Autentica desde headers del WS y devuelve el ID del usuario."""
-    user = _authenticate_ws_user_from_headers(headers, db)
+    user = _authenticate_ws_user(headers, db)
+    return user.id if user else None
+
+
+def _authenticate_ws_user_from_headers(
+    headers: dict[str, str], db: Session
+) -> User | None:
+    """Compat: mantiene la firma anterior para tests/imports existentes."""
+    return _authenticate_ws_user(headers, db)
+
+
+def _authenticate_ws_user_id(
+    headers: dict[str, str], db: Session, token: str | None = None
+) -> int | None:
+    """Autentica desde headers o query token del WS y devuelve el ID."""
+    user = _authenticate_ws_user(headers, db, token=token)
     return user.id if user else None
 
 
@@ -368,8 +383,8 @@ async def club_chat(
 ):
     """WebSocket endpoint para chat en club.
 
-    Autenticación: Bearer token en header Authorization
-    Requiere: Authorization: Bearer <token> con claim type 'access'
+    Autenticación: Bearer token en header Authorization o token por query
+    Requiere token con claim type 'access'
     """
     await websocket.accept()
     user_id: int | None = None
@@ -377,11 +392,12 @@ async def club_chat(
     content_error = "content debe ser requerido y tener entre 1 y 1000 caracteres"
 
     try:
-        # Autenticar desde headers
+        # Autenticar desde headers o query param token
         user_id = await run_in_threadpool(
-            _authenticate_ws_user_id_from_headers,
+            _authenticate_ws_user_id,
             dict(websocket.headers),
             db,
+            websocket.query_params.get("token"),
         )
         if user_id is None:
             await websocket.close(code=4001, reason="Invalid authentication")
