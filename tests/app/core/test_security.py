@@ -9,6 +9,7 @@ from fastapi.security import HTTPAuthorizationCredentials
 from app.core.roles import RoleName
 from app.core.security import (
     TokenDecodeError,
+    _auth_user_cache_key,
     create_access_token,
     decode_access_token,
     get_current_user,
@@ -85,7 +86,15 @@ def test_require_staff_rejects_user():
     assert exc_info.value.detail == "Solo staff"
 
 
-def test_get_current_user_success():
+def test_get_current_user_success(monkeypatch):
+    monkeypatch.setattr(
+        "app.core.security.cache_service.get_json_with_status",
+        lambda _key: (None, "miss"),
+    )
+    monkeypatch.setattr(
+        "app.core.security.cache_service.set_json",
+        lambda _key, _value, _ttl: None,
+    )
     fake_token = create_access_token({"sub": "1"})
     credentials = HTTPAuthorizationCredentials(
         scheme="Bearer",
@@ -119,7 +128,11 @@ def test_get_current_user_invalid_sub():
     assert exc_info.value.detail == "Token inválido"
 
 
-def test_get_current_user_user_not_found():
+def test_get_current_user_user_not_found(monkeypatch):
+    monkeypatch.setattr(
+        "app.core.security.cache_service.get_json_with_status",
+        lambda _key: (None, "miss"),
+    )
     fake_token = create_access_token({"sub": "1"})
     credentials = HTTPAuthorizationCredentials(
         scheme="Bearer",
@@ -136,7 +149,11 @@ def test_get_current_user_user_not_found():
     assert exc_info.value.detail == "Usuario no encontrado"
 
 
-def test_get_current_user_inactive_user():
+def test_get_current_user_inactive_user(monkeypatch):
+    monkeypatch.setattr(
+        "app.core.security.cache_service.get_json_with_status",
+        lambda _key: (None, "miss"),
+    )
     fake_token = create_access_token({"sub": "1"})
     credentials = HTTPAuthorizationCredentials(
         scheme="Bearer",
@@ -156,7 +173,11 @@ def test_get_current_user_inactive_user():
     assert exc_info.value.detail == "Usuario inactivo"
 
 
-def test_get_current_user_without_role():
+def test_get_current_user_without_role(monkeypatch):
+    monkeypatch.setattr(
+        "app.core.security.cache_service.get_json_with_status",
+        lambda _key: (None, "miss"),
+    )
     fake_token = create_access_token({"sub": "1"})
     credentials = HTTPAuthorizationCredentials(
         scheme="Bearer",
@@ -173,3 +194,86 @@ def test_get_current_user_without_role():
 
     assert exc_info.value.status_code == 403
     assert exc_info.value.detail == "Usuario sin rol asignado"
+
+
+def test_auth_user_cache_key_format():
+    assert _auth_user_cache_key(1) == "auth:user:v1:1"
+    assert _auth_user_cache_key(99) == "auth:user:v1:99"
+
+
+def test_get_current_user_uses_cache_when_hit(monkeypatch):
+    fake_token = create_access_token({"sub": "42"})
+    credentials = HTTPAuthorizationCredentials(
+        scheme="Bearer",
+        credentials=fake_token,
+    )
+
+    cached_data = {"id": 42, "role_name": RoleName.USER, "is_active": True}
+    monkeypatch.setattr(
+        "app.core.security.cache_service.get_json_with_status",
+        lambda _key: (cached_data, "hit"),
+    )
+
+    fake_db = MagicMock()
+
+    result = get_current_user(credentials, fake_db)
+
+    assert result.id == 42
+    assert result.role == RoleName.USER
+    fake_db.execute.assert_not_called()
+
+
+def test_get_current_user_falls_back_to_db_on_cache_miss(monkeypatch):
+    fake_token = create_access_token({"sub": "1"})
+    credentials = HTTPAuthorizationCredentials(
+        scheme="Bearer",
+        credentials=fake_token,
+    )
+
+    monkeypatch.setattr(
+        "app.core.security.cache_service.get_json_with_status",
+        lambda _key: (None, "miss"),
+    )
+    monkeypatch.setattr(
+        "app.core.security.cache_service.set_json",
+        lambda _key, _value, _ttl: None,
+    )
+
+    fake_role = SimpleNamespace(name=RoleName.USER)
+    fake_user = SimpleNamespace(id=1, is_active=True, role=fake_role)
+    fake_db = MagicMock()
+    fake_db.execute.return_value.scalar_one_or_none.return_value = fake_user
+
+    result = get_current_user(credentials, fake_db)
+
+    assert result.id == 1
+    assert result.role == RoleName.USER
+    fake_db.execute.assert_called_once()
+
+
+def test_get_current_user_falls_back_to_db_on_cache_bypass(monkeypatch):
+    fake_token = create_access_token({"sub": "1"})
+    credentials = HTTPAuthorizationCredentials(
+        scheme="Bearer",
+        credentials=fake_token,
+    )
+
+    monkeypatch.setattr(
+        "app.core.security.cache_service.get_json_with_status",
+        lambda _key: (None, "bypass"),
+    )
+    monkeypatch.setattr(
+        "app.core.security.cache_service.set_json",
+        lambda _key, _value, _ttl: None,
+    )
+
+    fake_role = SimpleNamespace(name=RoleName.USER)
+    fake_user = SimpleNamespace(id=1, is_active=True, role=fake_role)
+    fake_db = MagicMock()
+    fake_db.execute.return_value.scalar_one_or_none.return_value = fake_user
+
+    result = get_current_user(credentials, fake_db)
+
+    assert result.id == 1
+    assert result.role == RoleName.USER
+    fake_db.execute.assert_called_once()
