@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     REDIS_SOCKET_TIMEOUT: float | None = None
     REDIS_HEALTH_CHECK_INTERVAL: int = 30
     REDIS_TIMEOUT_SECONDS: float = 0.1
+    REDIS_RETRY_COOLDOWN_SECONDS: float = 5.0
 
     R2_ACCOUNT_ID: str
     R2_ACCESS_KEY_ID: str

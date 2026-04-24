@@ -23,8 +23,12 @@ def _noop_create_task(coro):
 class _PubSubWithMessages:
     def __init__(self, messages):
         self._messages = messages
+        self._done = False
 
     async def listen(self):
+        if self._done:
+            raise asyncio.CancelledError
+        self._done = True
         for message in self._messages:
             yield message
 
@@ -36,7 +40,13 @@ class _CancelledPubSub:
 
 
 class _BrokenPubSub:
+    def __init__(self):
+        self._raised = False
+
     async def listen(self):
+        if self._raised:
+            raise asyncio.CancelledError
+        self._raised = True
         raise RuntimeError("broken listener")
         yield
 
@@ -281,7 +291,13 @@ async def test_disconnect_redis_cleans_listener_tasks_and_pubsubs():
     """Test disconnect cleans listener tasks and pubsubs before closing redis client."""
     manager = RedisChatManager()
 
-    task = _DummyTask()
+    async def _dummy_coro():
+        try:
+            await asyncio.sleep(100)
+        except asyncio.CancelledError:
+            pass
+
+    task = asyncio.create_task(_dummy_coro())
     pubsub = AsyncMock()
     pubsub.close = AsyncMock()
     redis_client = AsyncMock()
@@ -293,7 +309,7 @@ async def test_disconnect_redis_cleans_listener_tasks_and_pubsubs():
 
     await manager.disconnect_redis()
 
-    assert task.cancel_called is True
+    assert task.cancelled()
     assert manager._listener_tasks == {}
     assert manager._pubsubs == {}
     pubsub.close.assert_awaited_once()
@@ -450,7 +466,8 @@ async def test_listen_broadcasts_only_valid_messages():
         ]
     )
 
-    await manager._listen("club:chat:5", pubsub)
+    with pytest.raises(asyncio.CancelledError):
+        await manager._listen("club:chat:5", pubsub)
 
     manager._broadcast_local.assert_awaited_once_with(
         5, {"id_club": 5, "content": "Hola a todos"}
@@ -468,8 +485,9 @@ async def test_listen_reraises_cancelled_error():
 
 @pytest.mark.asyncio
 async def test_listen_handles_unexpected_error_without_crashing():
-    """Test listener logs and swallows unexpected errors from pubsub.listen."""
+    """Test listener logs unexpected errors from pubsub.listen and retries."""
     manager = RedisChatManager()
 
-    # Should not raise
-    await manager._listen("club:chat:5", _BrokenPubSub())
+    with patch("app.services.redis_service.asyncio.sleep"):
+        with pytest.raises(asyncio.CancelledError):
+            await manager._listen("club:chat:5", _BrokenPubSub())

@@ -53,8 +53,10 @@ class RedisChatManager:
 
     async def disconnect_redis(self) -> None:
         """Desconecta del servidor Redis."""
-        for task in self._listener_tasks.values():
-            task.cancel()
+        tasks = list(self._listener_tasks.values())
+        for t in tasks:
+            t.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
 
         self._listener_tasks.clear()
 
@@ -174,32 +176,41 @@ class RedisChatManager:
 
     async def _listen(self, channel: str, pubsub: PubSub) -> None:
         """Escucha mensajes Redis de un canal y los rebroadcast localmente."""
-        try:
-            async for message in pubsub.listen():
-                if message.get("type") != "message":
-                    continue
+        backoff = 1.0
+        while True:
+            try:
+                async for message in pubsub.listen():
+                    if message.get("type") != "message":
+                        continue
 
-                payload = message.get("data")
-                if not payload:
-                    continue
+                    payload = message.get("data")
+                    if not payload:
+                        continue
 
-                try:
-                    decoded = json.loads(payload)
-                except json.JSONDecodeError:
-                    logger.error("Mensaje Redis inválido en canal %s", channel)
-                    continue
+                    try:
+                        decoded = json.loads(payload)
+                    except json.JSONDecodeError:
+                        logger.error("Mensaje Redis inválido en canal %s", channel)
+                        continue
 
-                club_id = decoded.get("id_club")
-                if club_id is None:
-                    logger.error("Mensaje Redis sin id_club en canal %s", channel)
-                    continue
+                    club_id = decoded.get("id_club")
+                    if club_id is None:
+                        logger.error("Mensaje Redis sin id_club en canal %s", channel)
+                        continue
 
-                await self._broadcast_local(int(club_id), decoded)
-        except CancelledError:
-            logger.debug("Listener Redis cancelado para canal %s", channel)
-            raise
-        except Exception as e:
-            logger.error(f"Error escuchando canal Redis {channel}: {e}")
+                    await self._broadcast_local(int(club_id), decoded)
+            except CancelledError:
+                logger.debug("Listener Redis cancelado para canal %s", channel)
+                raise
+            except Exception as e:
+                logger.error(
+                    "Error escuchando canal Redis %s (reintentando en %.0fs): %s",
+                    channel,
+                    backoff,
+                    e,
+                )
+                await asyncio.sleep(backoff)
+                backoff = min(backoff * 2, 60.0)
 
     async def _broadcast_local(self, club_id: int, message: dict) -> None:
         """Hace broadcast a todas las conexiones locales de un club."""
@@ -212,7 +223,14 @@ class RedisChatManager:
                         logger.error(f"Error en callback local: {e}")
 
     async def get_connected_user_ids(self, club_id: int) -> set[int]:
-        """Obtiene los IDs de usuarios conectados a un club (solo locales)."""
+        """Obtiene los IDs de usuarios conectados a un club (solo locales).
+
+        NOTA: Solo rastrea conexiones del proceso actual. En despliegues
+        multi-worker (uvicorn --workers N) o multi-pod, usuarios conectados
+        a otro worker aparecen como offline y recibirán notificaciones push
+        duplicadas. Para eliminar este comportamiento, migrar el tracking a
+        Redis (SADD/SREM/SMEMBERS sobre club:{id}:online).
+        """
         user_ids = set()
         prefix = f"{club_id}:"
 

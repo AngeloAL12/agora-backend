@@ -17,7 +17,7 @@ from app.models.club.club_category import ClubCategory
 from app.models.club.club_member import ClubMember
 from app.models.club.message import ClubMessage
 from app.routers.clubs import (
-    _authenticate_ws_user_from_headers,
+    _authenticate_ws_user,
     _build_image_url,
     _build_message_payload,
     _clean_required_text,
@@ -1211,7 +1211,7 @@ def test_get_club_messages_paginated(db):
     assert response.status_code == 200
     data = response.json()
     assert len(data) == 2
-    assert data[0]["content"] == "mensaje-3"
+    assert data[0]["content"] == "mensaje-1"
     assert data[1]["content"] == "mensaje-2"
     assert data[0]["user"]["name"] == "User 1"
 
@@ -1341,7 +1341,7 @@ def test_authenticate_ws_user_returns_none_for_invalid_sub(db, monkeypatch):
 
     monkeypatch.setattr("app.routers.clubs.decode_access_token", mock_decode)
     headers = {"authorization": "Bearer fake-token"}
-    assert _authenticate_ws_user_from_headers(headers, db) is None
+    assert _authenticate_ws_user(headers, db) is None
 
 
 def test_authenticate_ws_user_returns_none_for_decode_error(db, monkeypatch):
@@ -1351,7 +1351,7 @@ def test_authenticate_ws_user_returns_none_for_decode_error(db, monkeypatch):
     monkeypatch.setattr("app.routers.clubs.decode_access_token", raise_decode_error)
 
     headers = {"authorization": "Bearer fake-token"}
-    assert _authenticate_ws_user_from_headers(headers, db) is None
+    assert _authenticate_ws_user(headers, db) is None
 
 
 def test_authenticate_ws_user_returns_user_for_valid_token(db, monkeypatch):
@@ -1362,7 +1362,7 @@ def test_authenticate_ws_user_returns_user_for_valid_token(db, monkeypatch):
     )
 
     headers = {"authorization": "Bearer fake-token"}
-    result = _authenticate_ws_user_from_headers(headers, db)
+    result = _authenticate_ws_user(headers, db)
 
     assert result is not None
     assert result.id == user.id
@@ -1393,7 +1393,7 @@ def test_authenticate_ws_user_returns_none_for_inactive_user(db, monkeypatch):
     )
 
     headers = {"authorization": "Bearer fake-token"}
-    assert _authenticate_ws_user_from_headers(headers, db) is None
+    assert _authenticate_ws_user(headers, db) is None
 
 
 def test_notify_offline_members_sends_push_to_offline_members_only(db, monkeypatch):
@@ -1707,7 +1707,7 @@ def test_authenticate_ws_user_missing_bearer_prefix(db):
     token = create_access_token({"sub": "1", "type": "access"})
     headers = {"authorization": token}  # Missing "Bearer " prefix
 
-    result = _authenticate_ws_user_from_headers(headers, db)
+    result = _authenticate_ws_user(headers, db)
 
     assert result is None
 
@@ -1716,7 +1716,7 @@ def test_authenticate_ws_user_empty_authorization_header(db):
     """Test authentication fails with empty authorization header."""
     headers = {"authorization": ""}
 
-    result = _authenticate_ws_user_from_headers(headers, db)
+    result = _authenticate_ws_user(headers, db)
 
     assert result is None
 
@@ -1725,7 +1725,7 @@ def test_authenticate_ws_user_no_authorization_header(db):
     """Test authentication fails when no authorization header."""
     headers = {}
 
-    result = _authenticate_ws_user_from_headers(headers, db)
+    result = _authenticate_ws_user(headers, db)
 
     assert result is None
 
@@ -1739,7 +1739,7 @@ def test_authenticate_ws_user_wrong_token_type(db, monkeypatch):
     monkeypatch.setattr("app.routers.clubs.decode_access_token", mock_decode)
     headers = {"authorization": "Bearer fake-token"}
 
-    result = _authenticate_ws_user_from_headers(headers, db)
+    result = _authenticate_ws_user(headers, db)
 
     assert result is None
 

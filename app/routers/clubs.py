@@ -1,5 +1,5 @@
 import logging
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import (
     APIRouter,
@@ -40,7 +40,11 @@ from app.schemas.club.club import (
     ClubResponse,
 )
 from app.schemas.club.event import EventCreate, EventResponse, EventUpdate
-from app.schemas.club.message import ClubMessageInput, ClubMessageResponse
+from app.schemas.club.message import (
+    ClubMessageInput,
+    ClubMessageResponse,
+    ClubMessageUserResponse,
+)
 from app.services.push_service import send_push_notification
 from app.services.redis_service import redis_chat_manager
 from app.services.storage_service import storage_service
@@ -123,11 +127,11 @@ def _is_club_member(club: Club, user_id: int, db: Session) -> bool:
     if club.id_leader == user_id:
         return True
 
-    membership = (
-        db.query(ClubMember)
-        .filter(ClubMember.id_club == club.id, ClubMember.id_user == user_id)
-        .first()
-    )
+    membership = db.execute(
+        select(ClubMember).where(
+            ClubMember.id_club == club.id, ClubMember.id_user == user_id
+        )
+    ).scalar_one_or_none()
     return membership is not None
 
 
@@ -158,6 +162,8 @@ def _authenticate_ws_user(
         return None
 
     user_id = payload.get("sub")
+    if user_id is None:
+        return None
     try:
         user_id_int = int(user_id)
     except (TypeError, ValueError):
@@ -176,27 +182,12 @@ def _build_message_payload(message: ClubMessage) -> dict:
         id_club=message.id_club,
         content=message.content,
         created_at=message.created_at,
-        user={
-            "id": message.user.id,
-            "name": message.user.name,
-            "photo": message.user.photo,
-        },
+        user=ClubMessageUserResponse(
+            id=message.user.id,
+            name=message.user.name,
+            photo=message.user.photo,
+        ),
     ).model_dump(mode="json")
-
-
-def _authenticate_ws_user_id_from_headers(
-    headers: dict[str, str], db: Session
-) -> int | None:
-    """Autentica desde headers del WS y devuelve el ID del usuario."""
-    user = _authenticate_ws_user(headers, db)
-    return user.id if user else None
-
-
-def _authenticate_ws_user_from_headers(
-    headers: dict[str, str], db: Session
-) -> User | None:
-    """Compat: mantiene la firma anterior para tests/imports existentes."""
-    return _authenticate_ws_user(headers, db)
 
 
 def _authenticate_ws_user_id(
@@ -224,25 +215,29 @@ def _create_message_and_notify_offline(
     connected_user_ids: set[int],
 ) -> dict:
     """Persiste mensaje y notifica miembros offline en una operación síncrona."""
-    try:
-        club = db.query(Club).filter(Club.id == club_id).first()
-        sender = db.query(User).filter(User.id == user_id).first()
-        if not club or not sender:
-            raise ValueError("Club o usuario no encontrado")
+    club = db.query(Club).filter(Club.id == club_id).first()
+    sender = db.query(User).filter(User.id == user_id).first()
+    if not club or not sender:
+        raise ValueError("Club o usuario no encontrado")
 
+    try:
         message = ClubMessage(id_club=club.id, id_user=sender.id, content=content)
         db.add(message)
         db.commit()
         db.refresh(message)
+    except Exception:
+        db.rollback()
+        raise
 
-        db_message = db.execute(
-            select(ClubMessage)
-            .options(joinedload(ClubMessage.user))
-            .where(ClubMessage.id == message.id)
-        ).scalar_one()
+    db_message = db.execute(
+        select(ClubMessage)
+        .options(joinedload(ClubMessage.user))
+        .where(ClubMessage.id == message.id)
+    ).scalar_one()
 
-        response_payload = _build_message_payload(db_message)
+    response_payload = _build_message_payload(db_message)
 
+    try:
         _notify_offline_members(
             db,
             club=club,
@@ -250,11 +245,10 @@ def _create_message_and_notify_offline(
             content=content,
             connected_user_ids=connected_user_ids,
         )
-
-        return response_payload
     except Exception:
-        db.rollback()
-        raise
+        logger.error("Push notification failed, continuing", exc_info=True)
+
+    return response_payload
 
 
 def _notify_offline_members(
@@ -364,7 +358,7 @@ def get_club_messages(
             select(ClubMessage)
             .options(joinedload(ClubMessage.user))
             .where(ClubMessage.id_club == club_id)
-            .order_by(ClubMessage.created_at.desc(), ClubMessage.id.desc())
+            .order_by(ClubMessage.created_at.asc(), ClubMessage.id.asc())
             .offset((page - 1) * limit)
             .limit(limit)
         )
@@ -388,7 +382,7 @@ async def club_chat(
     """
     await websocket.accept()
     user_id: int | None = None
-    on_message_from_redis = None
+    ws_callback: Any = None
     content_error = "content debe ser requerido y tener entre 1 y 1000 caracteres"
 
     try:
@@ -412,11 +406,16 @@ async def club_chat(
         async def on_message_from_redis(message: dict) -> None:
             try:
                 await websocket.send_json(message)
-            except RuntimeError:
-                logger.debug(f"WebSocket cerrado para usuario {user_id}")
+            except RuntimeError as exc:
+                if "WebSocket is not connected" in str(exc):
+                    logger.debug(f"WebSocket cerrado para usuario {user_id}")
+                else:
+                    raise
+
+        ws_callback = on_message_from_redis
 
         # Suscribirse a mensajes del club
-        await redis_chat_manager.subscribe(club_id, user_id, on_message_from_redis)
+        await redis_chat_manager.subscribe(club_id, user_id, ws_callback)
 
         while True:
             payload = await websocket.receive_json()
@@ -456,10 +455,8 @@ async def club_chat(
     except Exception as e:
         logger.error(f"Error en WebSocket: {e}")
     finally:
-        if user_id is not None and on_message_from_redis is not None:
-            await redis_chat_manager.unsubscribe(
-                club_id, user_id, on_message_from_redis
-            )
+        if user_id is not None and ws_callback is not None:
+            await redis_chat_manager.unsubscribe(club_id, user_id, ws_callback)
 
 
 @router.post(
