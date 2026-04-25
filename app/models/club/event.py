@@ -17,7 +17,6 @@ class ClubEvent(Base):
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    # IMPORTANTE: Usamos datetime (minúscula) en Mapped para que Python lo entienda
     date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
     longitude: Mapped[float | None] = mapped_column(Float, nullable=True)

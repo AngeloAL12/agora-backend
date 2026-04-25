@@ -23,7 +23,6 @@ class ClubPostComment(Base):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
-    # Relationships
     user: Mapped["User"] = relationship(
         "User",
         foreign_keys=[id_user],
@@ -32,5 +31,4 @@ class ClubPostComment(Base):
     post: Mapped["ClubPost"] = relationship(
         "ClubPost",
         back_populates="comments",
-        lazy="joined",
     )

@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field
 
 
 class UserOut(BaseModel):
@@ -44,7 +44,7 @@ class PostResponse(BaseModel):
 
 class PostCreate(BaseModel):
     content: str = Field(..., min_length=1, max_length=1000)
-    images: list[str] = Field(default_factory=list, max_length=5)
+    images: list[AnyHttpUrl] = Field(default_factory=list, max_length=5)
 
 
 class CommentResponse(BaseModel):

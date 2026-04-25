@@ -181,7 +181,32 @@ def delete_club(
     if club.id_leader != current_user.id:
         raise HTTPException(status_code=403, detail="Solo el líder puede eliminar")
 
-    db.query(ClubMember).filter(ClubMember.id_club == club_id).delete()
+    post_ids = db.query(ClubPost.id).filter(ClubPost.id_club == club_id)
+
+    db.query(ClubPostComment).filter(ClubPostComment.id_post.in_(post_ids)).delete(
+        synchronize_session=False
+    )
+
+    db.query(ClubPostLike).filter(ClubPostLike.id_post.in_(post_ids)).delete(
+        synchronize_session=False
+    )
+
+    db.query(ClubPostImage).filter(ClubPostImage.id_post.in_(post_ids)).delete(
+        synchronize_session=False
+    )
+
+    db.query(ClubPost).filter(ClubPost.id_club == club_id).delete(
+        synchronize_session=False
+    )
+
+    db.query(ClubEvent).filter(ClubEvent.id_club == club_id).delete(
+        synchronize_session=False
+    )
+
+    db.query(ClubMember).filter(ClubMember.id_club == club_id).delete(
+        synchronize_session=False
+    )
+
     db.delete(club)
     db.commit()
     return {"message": "Club eliminado"}
@@ -407,7 +432,7 @@ def create_club_post(
 
         # Add images if provided
         for url in payload.images:
-            image = ClubPostImage(url=url, id_post=post.id)
+            image = ClubPostImage(url=str(url), id_post=post.id)
             db.add(image)
 
         db.commit()
@@ -652,8 +677,9 @@ def like_post(
         db.rollback()
         raise HTTPException(status_code=400, detail="Error al dar like") from err
 
-    # Count total likes
-    like_count = db.query(ClubPostLike).filter(ClubPostLike.id_post == post_id).count()
+        # Count total likes
+        db.refresh(post)
+    like_count = len(post.likes)
 
     return {
         "id_post": post_id,
@@ -700,7 +726,8 @@ def unlike_post(
     db.commit()
 
     # Count total likes
-    like_count = db.query(ClubPostLike).filter(ClubPostLike.id_post == post_id).count()
+    db.refresh(post)
+    like_count = len(post.likes)
 
     return {
         "id_post": post_id,

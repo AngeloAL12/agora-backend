@@ -582,15 +582,15 @@ def test_transfer_leadership_same_leader_rejected(db, clear_dependency_overrides
 
 
 def create_event(db, club_id, author_id, title="Evento Test", future=True):
-    from datetime import datetime, timedelta
+    from datetime import UTC, datetime, timedelta
 
     ensure_user(db, author_id)
     from app.models.club.event import ClubEvent
 
     if future:
-        event_date = datetime.now() + timedelta(days=7)
+        event_date = datetime.now(UTC) + timedelta(days=7)
     else:
-        event_date = datetime.now() - timedelta(days=1)
+        event_date = datetime.now(UTC) - timedelta(days=1)
 
     event = ClubEvent(
         id_club=club_id,
@@ -655,7 +655,7 @@ def test_create_event_as_leader(db, clear_dependency_overrides):
     category = create_category(db)
     club = create_club(db, category.id, leader_id=1)
 
-    from datetime import datetime, timedelta
+    from datetime import UTC, datetime, timedelta
 
     client = TestClient(app)
     response = client.post(
@@ -663,7 +663,7 @@ def test_create_event_as_leader(db, clear_dependency_overrides):
         json={
             "title": "Nuevo Evento",
             "description": "Descripción",
-            "date": (datetime.now() + timedelta(days=7)).isoformat(),
+            "date": (datetime.now(UTC) + timedelta(days=7)).isoformat(),
             "latitude": 32.65,
             "longitude": -115.47,
         },
@@ -877,3 +877,76 @@ def test_create_club_post(db, clear_dependency_overrides):
     assert data["comment_count"] == 0
     assert len(data["images"]) == 1
     assert data["author"]["id"] == 1
+
+
+def test_get_posts_non_member_forbidden(db, clear_dependency_overrides):
+    app.dependency_overrides[get_current_user] = override_user(2)
+
+    category = create_category(db)
+    club = create_club(db, category.id, leader_id=1)
+
+    client = TestClient(app)
+    response = client.get(f"/clubs/{club.id}/posts")
+
+    assert response.status_code == 403
+
+
+def test_create_post_non_member_forbidden(db, clear_dependency_overrides):
+    app.dependency_overrides[get_current_user] = override_user(2)
+
+    category = create_category(db)
+    club = create_club(db, category.id, leader_id=1)
+
+    client = TestClient(app)
+    response = client.post(
+        f"/clubs/{club.id}/posts",
+        json={"content": "Hola", "images": []},
+    )
+
+    assert response.status_code == 403
+
+
+def test_delete_post_not_author_forbidden(db, clear_dependency_overrides):
+    category = create_category(db)
+    club = create_club(db, category.id, leader_id=1)
+
+    client = TestClient(app)
+
+    app.dependency_overrides[get_current_user] = override_user(2)
+    client.post(f"/clubs/{club.id}/members")
+
+    res = client.post(
+        f"/clubs/{club.id}/posts",
+        json={"content": "Post", "images": []},
+    )
+    post_id = res.json()["id"]
+
+    app.dependency_overrides[get_current_user] = override_user(3)
+    client.post(f"/clubs/{club.id}/members")
+
+    response = client.delete(f"/clubs/{club.id}/posts/{post_id}")
+
+    assert response.status_code == 403
+
+
+def test_create_post_comment(db, clear_dependency_overrides):
+    app.dependency_overrides[get_current_user] = override_user(1)
+
+    category = create_category(db)
+    club = create_club(db, category.id, leader_id=1)
+
+    client = TestClient(app)
+
+    res = client.post(
+        f"/clubs/{club.id}/posts",
+        json={"content": "Post", "images": []},
+    )
+    post_id = res.json()["id"]
+
+    response = client.post(
+        f"/clubs/{club.id}/posts/{post_id}/comments",
+        json={"content": "Comentario"},
+    )
+
+    assert response.status_code == 201
+    assert response.json()["content"] == "Comentario"
