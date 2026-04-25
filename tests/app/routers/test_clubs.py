@@ -209,11 +209,12 @@ def test_get_clubs(db, monkeypatch):
         profile_image="clubs/test/profile/uno.png",
         cover_image="clubs/test/cover/uno.png",
     )
+    create_membership(db, club_one.id, 2)
 
-    create_club(
+    club_dos = create_club(
         db,
         category.id,
-        leader_id=2,
+        leader_id=3,
         name=unique_name("Club Dos"),
         profile_image=None,
         cover_image=None,
@@ -235,6 +236,10 @@ def test_get_clubs(db, monkeypatch):
         club_one_response["cover_image"]
         == "https://cdn.example.com/clubs/test/cover/uno.png"
     )
+    assert club_one_response["members_count"] == 2
+
+    club_dos_response = next(item for item in data if item["id"] == club_dos.id)
+    assert club_dos_response["members_count"] == 1
 
 
 def test_get_club_not_found():

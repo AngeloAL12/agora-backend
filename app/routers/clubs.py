@@ -15,7 +15,7 @@ from fastapi import (
 )
 from fastapi.concurrency import run_in_threadpool
 from pydantic import ValidationError
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
@@ -317,14 +317,22 @@ def _notify_offline_members(
         )
 
 
-@router.get("", response_model=list[ClubResponse])
+@router.get("", response_model=list[ClubDetailResponse])
 def get_clubs(
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
 ):
-    clubs = db.query(Club).offset(skip).limit(limit).all()
-    return [_to_club_response(club) for club in clubs]
+    rows = (
+        db.query(Club, func.count(ClubMember.id).label("members_count"))
+        .outerjoin(ClubMember, Club.id == ClubMember.id_club)
+        .group_by(Club.id)
+        .order_by(Club.id)
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+    return [_to_club_detail_response(club, count) for club, count in rows]
 
 
 @router.get("/categories", response_model=list[ClubCategoryResponse])
