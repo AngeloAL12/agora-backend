@@ -327,6 +327,7 @@ def get_clubs(
         db.query(Club, func.count(ClubMember.id).label("members_count"))
         .outerjoin(ClubMember, Club.id == ClubMember.id_club)
         .group_by(Club.id)
+        .order_by(Club.id)
         .offset(skip)
         .limit(limit)
         .all()
