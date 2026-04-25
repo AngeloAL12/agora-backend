@@ -190,33 +190,41 @@ def _build_message_payload(message: ClubMessage) -> dict:
     ).model_dump(mode="json")
 
 
-def _authenticate_ws_user_id(
-    headers: dict[str, str], db: Session, token: str | None = None
-) -> int | None:
-    """Autentica desde headers o query token del WS y devuelve el ID."""
+def _authenticate_ws_user_for_club(
+    headers: dict[str, str], club_id: int, db: Session
+) -> tuple[User, Club] | None:
+    """Autenticates WS user from Authorization header and validates club membership.
+
+    Returns (user, club) if auth + membership pass, None otherwise.
+    """
+    auth_header = headers.get("authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return None
+    token = auth_header[7:]
+
     user = _authenticate_ws_user(headers, db, token=token)
-    return user.id if user else None
+    if user is None:
+        return None
 
-
-def _is_ws_user_member(club_id: int, user_id: int, db: Session) -> bool:
-    """Valida membresía del usuario en un club usando sesión local."""
     club = db.query(Club).filter(Club.id == club_id).first()
     if not club:
-        return False
-    return _is_club_member(club, user_id, db)
+        return None
+
+    if not _is_club_member(club, user.id, db):
+        return None
+
+    return user, club
 
 
 def _create_message_and_notify_offline(
     db: Session,
     *,
-    club_id: int,
-    user_id: int,
+    club: Club,
+    sender: User,
     content: str,
     connected_user_ids: set[int],
 ) -> dict:
     """Persiste mensaje y notifica miembros offline en una operación síncrona."""
-    club = db.query(Club).filter(Club.id == club_id).first()
-    sender = db.query(User).filter(User.id == user_id).first()
     if not club or not sender:
         raise ValueError("Club o usuario no encontrado")
 
@@ -296,9 +304,6 @@ def _notify_offline_members(
     preview = content if len(content) <= 120 else f"{content[:117]}..."
 
     for id_user, push_token in sessions:
-        if not push_token:
-            continue
-
         send_push_notification(
             token=push_token,
             title=f"Nuevo mensaje en {club.name}",
@@ -377,31 +382,40 @@ async def club_chat(
 ):
     """WebSocket endpoint para chat en club.
 
-    Autenticación: Bearer token en header Authorization o token por query
-    Requiere token con claim type 'access'
+    Autenticación: Bearer token en header Authorization.
+    Requiere token con claim type 'access'.
     """
-    await websocket.accept()
     user_id: int | None = None
     ws_callback: Any = None
     content_error = "content debe ser requerido y tener entre 1 y 1000 caracteres"
 
-    try:
-        # Autenticar desde headers o query param token
-        user_id = await run_in_threadpool(
-            _authenticate_ws_user_id,
-            dict(websocket.headers),
-            db,
-            websocket.query_params.get("token"),
-        )
-        if user_id is None:
+    await websocket.accept()
+
+    result = await run_in_threadpool(
+        _authenticate_ws_user_for_club,
+        dict(websocket.headers),
+        club_id,
+        db,
+    )
+
+    if result is None:
+        auth_header = dict(websocket.headers).get("authorization", "")
+        if not auth_header.startswith("Bearer "):
             await websocket.close(code=4001, reason="Invalid authentication")
-            return
+        else:
+            user_check = await run_in_threadpool(
+                _authenticate_ws_user, dict(websocket.headers), db
+            )
+            if user_check is None:
+                await websocket.close(code=4001, reason="Invalid authentication")
+            else:
+                await websocket.close(code=4003, reason="Not a club member")
+        return
 
-        is_member = await run_in_threadpool(_is_ws_user_member, club_id, user_id, db)
-        if not is_member:
-            await websocket.close(code=4003, reason="Not a club member")
-            return
+    user, club = result
+    user_id = user.id
 
+    try:
         # Crear callback para recibir mensajes del Redis
         async def on_message_from_redis(message: dict) -> None:
             try:
@@ -432,26 +446,23 @@ async def club_chat(
                 continue
 
             try:
-                # Notificar miembros offline
                 connected_ids = await redis_chat_manager.get_connected_user_ids(club_id)
                 response_payload = await run_in_threadpool(
                     _create_message_and_notify_offline,
                     db,
-                    club_id=club_id,
-                    user_id=user_id,
+                    club=club,
+                    sender=user,
                     content=content,
                     connected_user_ids=connected_ids,
                 )
 
-                # Publicar a través de Redis Pub/Sub
                 await redis_chat_manager.publish_message(club_id, response_payload)
             except Exception as e:
                 logger.error(f"Error al procesar mensaje: {e}")
                 await websocket.send_json({"detail": "Error procesando mensaje"})
 
     except WebSocketDisconnect:
-        if user_id is not None:
-            logger.info(f"Usuario {user_id} desconectado del club {club_id}")
+        logger.info(f"Usuario {user_id} desconectado del club {club_id}")
     except Exception as e:
         logger.error(f"Error en WebSocket: {e}")
     finally:

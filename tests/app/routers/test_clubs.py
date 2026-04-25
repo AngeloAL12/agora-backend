@@ -870,6 +870,19 @@ def test_transfer_leadership_requires_membership(db):
     assert response.json()["detail"] == "El usuario destino debe ser miembro del club"
 
 
+def test_transfer_leadership_same_leader_rejected(db):
+    app.dependency_overrides[get_current_user] = override_user(1)
+
+    category = create_category(db)
+    club = create_club(db, category.id, leader_id=1)
+
+    client = TestClient(app)
+    response = client.patch(f"/clubs/{club.id}/members/1/leader")
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "El usuario ya es el líder actual"
+
+
 # --- Tests de Eventos ---
 
 
@@ -1593,11 +1606,13 @@ def test_websocket_invalid_token_closes(db):
 
     client = TestClient(app)
 
-    url = f"/clubs/{club.id}/chat?token=invalid-token"
     with pytest.raises(WebSocketDisconnect) as exc_info:
-        with client.websocket_connect(url) as ws:
+        with client.websocket_connect(
+            f"/clubs/{club.id}/chat",
+            headers={"authorization": "Bearer invalid-token"},
+        ) as ws:
             ws.receive_json()
-    assert exc_info.value.code in [4001, 1006]
+    assert exc_info.value.code == 4001
 
 
 def test_websocket_non_member_closes(db):
@@ -1609,11 +1624,13 @@ def test_websocket_non_member_closes(db):
 
     client = TestClient(app)
 
-    url = f"/clubs/{club.id}/chat?token={token_user_2}"
     with pytest.raises(WebSocketDisconnect) as exc_info:
-        with client.websocket_connect(url) as ws:
+        with client.websocket_connect(
+            f"/clubs/{club.id}/chat",
+            headers={"authorization": f"Bearer {token_user_2}"},
+        ) as ws:
             ws.receive_json()
-    assert exc_info.value.code in [4003, 1006]
+    assert exc_info.value.code == 4003
 
 
 def test_update_event_all_optional_fields_none(db, clear_dependency_overrides):

@@ -193,12 +193,9 @@ class RedisChatManager:
                         logger.error("Mensaje Redis inválido en canal %s", channel)
                         continue
 
-                    club_id = decoded.get("id_club")
-                    if club_id is None:
-                        logger.error("Mensaje Redis sin id_club en canal %s", channel)
-                        continue
-
-                    await self._broadcast_local(int(club_id), decoded)
+                    # channel format: "club:chat:{club_id}"
+                    club_id = int(channel.split(":")[-1])
+                    await self._broadcast_local(club_id, decoded)
             except CancelledError:
                 logger.debug("Listener Redis cancelado para canal %s", channel)
                 raise
