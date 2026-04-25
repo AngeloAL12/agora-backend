@@ -469,7 +469,9 @@ async def test_listen_broadcasts_only_valid_messages():
     with pytest.raises(asyncio.CancelledError):
         await manager._listen("club:chat:5", pubsub)
 
-    manager._broadcast_local.assert_awaited_once_with(
+    assert manager._broadcast_local.await_count == 2
+    manager._broadcast_local.assert_any_await(5, {"content": "Hola"})
+    manager._broadcast_local.assert_any_await(
         5, {"id_club": 5, "content": "Hola a todos"}
     )
 
