@@ -21,8 +21,19 @@ jobs:
           --health-timeout=5s
           --health-retries=5
 
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/agora_test
+      REDIS_URL: redis://localhost:6379/0
       SECRET_KEY: test
       R2_ACCOUNT_ID: test-account-id
       R2_ACCESS_KEY_ID: test-key-id

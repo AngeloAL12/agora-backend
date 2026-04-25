@@ -1,12 +1,12 @@
 meta {
   name: Update a club
   type: http
-  seq: 4
+  seq: 5
 }
 
 patch {
   url: {{base_url}}/clubs/{{club_id}}
-  body: json
+  body: form
   auth: bearer
 }
 
@@ -14,11 +14,12 @@ auth:bearer {
   token: {{auth_token}}
 }
 
-body:json {
-  {
-    "name": "...", 
-    "description": "..."
-  }
+body:multipart-form {
+  ~name: 
+  ~description: 
+  ~id_category: 
+  ~profile_image: 
+  ~cover_image: 
 }
 
 vars:pre-request {

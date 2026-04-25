@@ -9,6 +9,7 @@ if TYPE_CHECKING:
     from app.models.auth.user import User
     from app.models.club.club_category import ClubCategory
     from app.models.club.club_member import ClubMember
+    from app.models.club.message import ClubMessage
 
 
 class Club(Base):
@@ -32,3 +33,4 @@ class Club(Base):
     category: Mapped["ClubCategory"] = relationship(back_populates="clubs")
     leader: Mapped["User"] = relationship(back_populates="clubs_led")
     members: Mapped[list["ClubMember"]] = relationship(back_populates="club")
+    messages: Mapped[list["ClubMessage"]] = relationship(back_populates="club")

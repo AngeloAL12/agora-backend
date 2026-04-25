@@ -6,7 +6,7 @@ meta {
 
 post {
   url: {{base_url}}/clubs
-  body: json
+  body: form
   auth: bearer
 }
 
@@ -14,12 +14,12 @@ auth:bearer {
   token: {{auth_token}}
 }
 
-body:json {
-  {
-    "name": "...", 
-    "description": "...", 
-    "category_id": 1
-  }
+body:multipart-form {
+  name: Club de prueba
+  description: Club para validar chat
+  id_category: "1"
+  ~profile_image:
+  ~cover_image:
 }
 
 settings {

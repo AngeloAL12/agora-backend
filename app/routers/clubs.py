@@ -1,4 +1,5 @@
-from typing import Annotated
+import logging
+from typing import Annotated, Any
 
 from fastapi import (
     APIRouter,
@@ -8,18 +9,30 @@ from fastapi import (
     HTTPException,
     Query,
     UploadFile,
+    WebSocket,
+    WebSocketDisconnect,
     status,
 )
+from fastapi.concurrency import run_in_threadpool
+from pydantic import ValidationError
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.core.config import settings
 from app.core.database import get_db
-from app.core.security import get_current_user
+from app.core.security import (
+    TokenDecodeError,
+    decode_access_token,
+    get_current_user,
+)
+from app.models.auth.user import User
+from app.models.auth.user_session import UserSession
 from app.models.club.club import Club
 from app.models.club.club_category import ClubCategory
 from app.models.club.club_member import ClubMember
 from app.models.club.event import ClubEvent
+from app.models.club.message import ClubMessage
 from app.schemas.auth.auth import CurrentUser
 from app.schemas.club.club import (
     ClubCategoryResponse,
@@ -27,7 +40,16 @@ from app.schemas.club.club import (
     ClubResponse,
 )
 from app.schemas.club.event import EventCreate, EventResponse, EventUpdate
+from app.schemas.club.message import (
+    ClubMessageInput,
+    ClubMessageResponse,
+    ClubMessageUserResponse,
+)
+from app.services.push_service import send_push_notification
+from app.services.redis_service import redis_chat_manager
 from app.services.storage_service import storage_service
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/clubs", tags=["clubs"])
 
@@ -101,6 +123,200 @@ def _clean_required_text(value: str, field_name: str, max_length: int) -> str:
     return cleaned
 
 
+def _is_club_member(club: Club, user_id: int, db: Session) -> bool:
+    if club.id_leader == user_id:
+        return True
+
+    membership = db.execute(
+        select(ClubMember).where(
+            ClubMember.id_club == club.id, ClubMember.id_user == user_id
+        )
+    ).scalar_one_or_none()
+    return membership is not None
+
+
+def _authenticate_ws_user(
+    headers: dict[str, str], db: Session, token: str | None = None
+) -> User | None:
+    """Autentica usuario para WebSocket desde header o query token.
+
+    Valida que:
+    - Exista Authorization header con formato 'Bearer <token>' o token por query
+    - El token sea válido
+    - El claim type sea estrictamente 'access'
+    - El usuario exista y esté activo
+    """
+    if token is None:
+        auth_header = headers.get("authorization", "")
+        if not auth_header.startswith("Bearer "):
+            return None
+        token = auth_header[7:]  # Remover "Bearer "
+
+    try:
+        payload = decode_access_token(token)
+    except TokenDecodeError:
+        return None
+
+    # Validar que el claim type sea estrictamente "access"
+    if payload.get("type") != "access":
+        return None
+
+    user_id = payload.get("sub")
+    if user_id is None:
+        return None
+    try:
+        user_id_int = int(user_id)
+    except (TypeError, ValueError):
+        return None
+
+    user = db.execute(select(User).where(User.id == user_id_int)).scalar_one_or_none()
+    if not user or not user.is_active:
+        return None
+
+    return user
+
+
+def _build_message_payload(message: ClubMessage) -> dict:
+    return ClubMessageResponse(
+        id=message.id,
+        id_club=message.id_club,
+        content=message.content,
+        created_at=message.created_at,
+        user=ClubMessageUserResponse(
+            id=message.user.id,
+            name=message.user.name,
+            photo=message.user.photo,
+        ),
+    ).model_dump(mode="json")
+
+
+def _authenticate_ws_user_for_club(
+    headers: dict[str, str], club_id: int, db: Session
+) -> tuple[User, Club] | None:
+    """Autenticates WS user from Authorization header and validates club membership.
+
+    Returns (user, club) if auth + membership pass, None otherwise.
+    """
+    auth_header = headers.get("authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return None
+    token = auth_header[7:]
+
+    user = _authenticate_ws_user(headers, db, token=token)
+    if user is None:
+        return None
+
+    club = db.query(Club).filter(Club.id == club_id).first()
+    if not club:
+        return None
+
+    if not _is_club_member(club, user.id, db):
+        return None
+
+    return user, club
+
+
+def _create_message_and_notify_offline(
+    db: Session,
+    *,
+    club: Club,
+    sender: User,
+    content: str,
+    connected_user_ids: set[int],
+) -> dict:
+    """Persiste mensaje y notifica miembros offline en una operación síncrona."""
+    if not club or not sender:
+        raise ValueError("Club o usuario no encontrado")
+
+    try:
+        message = ClubMessage(id_club=club.id, id_user=sender.id, content=content)
+        db.add(message)
+        db.commit()
+        db.refresh(message)
+    except Exception:
+        db.rollback()
+        raise
+
+    db_message = db.execute(
+        select(ClubMessage)
+        .options(joinedload(ClubMessage.user))
+        .where(ClubMessage.id == message.id)
+    ).scalar_one()
+
+    response_payload = _build_message_payload(db_message)
+
+    try:
+        _notify_offline_members(
+            db,
+            club=club,
+            sender=sender,
+            content=content,
+            connected_user_ids=connected_user_ids,
+        )
+    except Exception:
+        logger.error("Push notification failed, continuing", exc_info=True)
+
+    return response_payload
+
+
+def _notify_offline_members(
+    db: Session,
+    *,
+    club: Club,
+    sender: User,
+    content: str,
+    connected_user_ids: set[int],
+) -> None:
+    """Envía notificaciones push a miembros offline del club.
+
+    Args:
+        db: Sesión de BD
+        club: Club en el que se envió el mensaje
+        sender: Usuario que envió el mensaje
+        content: Contenido del mensaje
+        connected_user_ids: IDs de usuarios conectados (para excluir)
+    """
+    # Incluir al líder en la lista de miembros
+    member_ids = {club.id_leader}
+
+    # Agregar todos los miembros
+    member_ids.update(
+        db.execute(select(ClubMember.id_user).where(ClubMember.id_club == club.id))
+        .scalars()
+        .all()
+    )
+
+    # Excluir al remitente
+    member_ids.discard(sender.id)
+
+    # Calcular quiénes están offline
+    offline_ids = member_ids - connected_user_ids
+    if not offline_ids:
+        return
+
+    sessions = db.execute(
+        select(UserSession.id_user, UserSession.push_token).where(
+            UserSession.id_user.in_(offline_ids),
+            UserSession.push_token.is_not(None),
+        )
+    ).all()
+
+    preview = content if len(content) <= 120 else f"{content[:117]}..."
+
+    for id_user, push_token in sessions:
+        send_push_notification(
+            token=push_token,
+            title=f"Nuevo mensaje en {club.name}",
+            body=f"{sender.name}: {preview}",
+            data={
+                "category": "CLUB_CHAT",
+                "id_club": club.id,
+                "id_leader": club.id_leader,
+                "id_user": id_user,
+            },
+        )
+
+
 @router.get("", response_model=list[ClubResponse])
 def get_clubs(
     skip: int = Query(0, ge=0),
@@ -126,6 +342,132 @@ def get_club(club_id: int, db: Session = Depends(get_db)):
     members_count = db.query(ClubMember).filter(ClubMember.id_club == club_id).count()
 
     return _to_club_detail_response(club, members_count)
+
+
+@router.get("/{club_id}/messages", response_model=list[ClubMessageResponse])
+def get_club_messages(
+    club_id: int,
+    page: int = Query(1, ge=1),
+    limit: int = Query(50, ge=1, le=100),
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    club = db.query(Club).filter(Club.id == club_id).first()
+    if not club:
+        raise HTTPException(status_code=404, detail="Club no encontrado")
+
+    _verify_membership(club, current_user.id, db, require_leader=False)
+
+    messages = (
+        db.execute(
+            select(ClubMessage)
+            .options(joinedload(ClubMessage.user))
+            .where(ClubMessage.id_club == club_id)
+            .order_by(ClubMessage.created_at.asc(), ClubMessage.id.asc())
+            .offset((page - 1) * limit)
+            .limit(limit)
+        )
+        .scalars()
+        .all()
+    )
+
+    return [ClubMessageResponse.model_validate(item) for item in messages]
+
+
+@router.websocket("/{club_id}/chat")
+async def club_chat(
+    websocket: WebSocket,
+    club_id: int,
+    db: Session = Depends(get_db),
+):
+    """WebSocket endpoint para chat en club.
+
+    Autenticación: Bearer token en header Authorization.
+    Requiere token con claim type 'access'.
+    """
+    user_id: int | None = None
+    ws_callback: Any = None
+    content_error = "content debe ser requerido y tener entre 1 y 1000 caracteres"
+
+    await websocket.accept()
+
+    result = await run_in_threadpool(
+        _authenticate_ws_user_for_club,
+        dict(websocket.headers),
+        club_id,
+        db,
+    )
+
+    if result is None:
+        auth_header = dict(websocket.headers).get("authorization", "")
+        if not auth_header.startswith("Bearer "):
+            await websocket.close(code=4001, reason="Invalid authentication")
+        else:
+            user_check = await run_in_threadpool(
+                _authenticate_ws_user, dict(websocket.headers), db
+            )
+            if user_check is None:
+                await websocket.close(code=4001, reason="Invalid authentication")
+            else:
+                await websocket.close(code=4003, reason="Not a club member")
+        return
+
+    user, club = result
+    user_id = user.id
+
+    try:
+        # Crear callback para recibir mensajes del Redis
+        async def on_message_from_redis(message: dict) -> None:
+            try:
+                await websocket.send_json(message)
+            except RuntimeError as exc:
+                if "WebSocket is not connected" in str(exc):
+                    logger.debug(f"WebSocket cerrado para usuario {user_id}")
+                else:
+                    raise
+
+        ws_callback = on_message_from_redis
+
+        # Suscribirse a mensajes del club
+        await redis_chat_manager.subscribe(club_id, user_id, ws_callback)
+
+        while True:
+            payload = await websocket.receive_json()
+
+            try:
+                incoming = ClubMessageInput.model_validate(payload)
+            except ValidationError:
+                await websocket.send_json({"detail": content_error})
+                continue
+
+            content = incoming.content.strip()
+            if not content:
+                await websocket.send_json({"detail": content_error})
+                continue
+
+            try:
+                connected_ids = await redis_chat_manager.get_connected_user_ids(club_id)
+                response_payload = await run_in_threadpool(
+                    _create_message_and_notify_offline,
+                    db,
+                    club=club,
+                    sender=user,
+                    content=content,
+                    connected_user_ids=connected_ids,
+                )
+
+                await redis_chat_manager.publish_message(club_id, response_payload)
+            except Exception as e:
+                logger.error(f"Error al procesar mensaje: {e}")
+                await websocket.send_json({"detail": "Error procesando mensaje"})
+
+    except WebSocketDisconnect:
+        logger.info(f"Usuario {user_id} desconectado del club {club_id}")
+    except Exception as e:
+        logger.error(f"Error en WebSocket: {e}")
+    finally:
+        if user_id is not None and ws_callback is not None:
+            await redis_chat_manager.unsubscribe(club_id, user_id, ws_callback)
 
 
 @router.post(
