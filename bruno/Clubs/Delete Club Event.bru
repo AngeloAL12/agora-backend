@@ -1,11 +1,11 @@
 meta {
-  name: Join a club
+  name: Delete Club Event
   type: http
-  seq: 7
+  seq: 14
 }
 
-post {
-  url: {{base_url}}/clubs/{{club_id}}/members
+delete {
+  url: {{base_url}}/clubs/{{club_id}}/events/{{event_id}}
   body: none
   auth: bearer
 }
@@ -16,6 +16,7 @@ auth:bearer {
 
 vars:pre-request {
   club_id: 1
+  event_id: 1
 }
 
 settings {

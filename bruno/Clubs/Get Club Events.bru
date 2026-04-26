@@ -1,11 +1,11 @@
 meta {
-  name: Join a club
+  name: Get Club Events
   type: http
-  seq: 7
+  seq: 11
 }
 
-post {
-  url: {{base_url}}/clubs/{{club_id}}/members
+get {
+  url: {{base_url}}/clubs/{{club_id}}/events
   body: none
   auth: bearer
 }
