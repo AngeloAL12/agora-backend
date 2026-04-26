@@ -335,6 +335,28 @@ def get_clubs(
     return [_to_club_detail_response(club, count) for club, count in rows]
 
 
+@router.get("/me", response_model=list[ClubDetailResponse])
+def get_my_clubs(
+    current_user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Returns clubs where the authenticated user is leader or member."""
+    membership_subq = (
+        db.query(ClubMember.id_club)
+        .filter(ClubMember.id_user == current_user.id)
+        .subquery()
+    )
+    rows = (
+        db.query(Club, func.count(ClubMember.id).label("members_count"))
+        .outerjoin(ClubMember, Club.id == ClubMember.id_club)
+        .filter((Club.id_leader == current_user.id) | Club.id.in_(membership_subq))
+        .group_by(Club.id)
+        .order_by(Club.id)
+        .all()
+    )
+    return [_to_club_detail_response(club, count) for club, count in rows]
+
+
 @router.get("/categories", response_model=list[ClubCategoryResponse])
 def get_club_categories(db: Session = Depends(get_db)):
     return db.query(ClubCategory).order_by(ClubCategory.name.asc()).all()

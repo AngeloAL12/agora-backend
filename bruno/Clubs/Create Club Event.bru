@@ -1,0 +1,35 @@
+meta {
+  name: Create Club Event
+  type: http
+  seq: 12
+}
+
+post {
+  url: {{base_url}}/clubs/{{club_id}}/events
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{auth_token}}
+}
+
+body:json {
+  {
+    "title": "New Event",
+    "description": "Event description",
+    "date": "2026-10-10T10:00:00Z",
+    "latitude": 37.7749,
+    "longitude": -122.4194
+  }
+  
+}
+
+vars:pre-request {
+  club_id: 1
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

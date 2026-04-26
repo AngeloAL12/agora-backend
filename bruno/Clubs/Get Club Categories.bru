@@ -1,21 +1,17 @@
 meta {
-  name: Join a club
+  name: Get Club Categories
   type: http
-  seq: 7
+  seq: 10
 }
 
-post {
-  url: {{base_url}}/clubs/{{club_id}}/members
+get {
+  url: {{base_url}}/clubs/categories
   body: none
   auth: bearer
 }
 
 auth:bearer {
   token: {{auth_token}}
-}
-
-vars:pre-request {
-  club_id: 1
 }
 
 settings {
