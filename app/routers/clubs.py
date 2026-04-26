@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -181,34 +182,19 @@ def delete_club(
     if club.id_leader != current_user.id:
         raise HTTPException(status_code=403, detail="Solo el líder puede eliminar")
 
-    post_ids = db.query(ClubPost.id).filter(ClubPost.id_club == club_id)
-
-    db.query(ClubPostComment).filter(ClubPostComment.id_post.in_(post_ids)).delete(
-        synchronize_session=False
-    )
-
-    db.query(ClubPostLike).filter(ClubPostLike.id_post.in_(post_ids)).delete(
-        synchronize_session=False
-    )
-
-    db.query(ClubPostImage).filter(ClubPostImage.id_post.in_(post_ids)).delete(
-        synchronize_session=False
-    )
-
-    db.query(ClubPost).filter(ClubPost.id_club == club_id).delete(
-        synchronize_session=False
-    )
-
-    db.query(ClubEvent).filter(ClubEvent.id_club == club_id).delete(
-        synchronize_session=False
-    )
-
-    db.query(ClubMember).filter(ClubMember.id_club == club_id).delete(
-        synchronize_session=False
-    )
+    # Fallback mínimo para SQLite en tests.
+    # En PostgreSQL producción, las FK ya tienen ON DELETE CASCADE.
+    if db.bind and db.bind.dialect.name == "sqlite":
+        db.query(ClubMember).filter(ClubMember.id_club == club_id).delete(
+            synchronize_session=False
+        )
+        db.query(ClubEvent).filter(ClubEvent.id_club == club_id).delete(
+            synchronize_session=False
+        )
 
     db.delete(club)
     db.commit()
+
     return {"message": "Club eliminado"}
 
 
@@ -355,14 +341,27 @@ def get_club_posts(
 
     result = []
     for post in posts:
-        # Count likes
-        like_count = len(post.likes)
-        user_has_liked = any(like.id_user == current_user.id for like in post.likes)
+        like_count = (
+            db.query(func.count(ClubPostLike.id_user))
+            .filter(ClubPostLike.id_post == post.id)
+            .scalar()
+        ) or 0
 
-        # Count comments
-        comment_count = len(post.comments)
+        user_has_liked = (
+            db.query(ClubPostLike)
+            .filter(
+                ClubPostLike.id_post == post.id,
+                ClubPostLike.id_user == current_user.id,
+            )
+            .first()
+        ) is not None
 
-        # Get first 3 comments for preview
+        comment_count = (
+            db.query(func.count(ClubPostComment.id))
+            .filter(ClubPostComment.id_post == post.id)
+            .scalar()
+        ) or 0
+
         comments_preview = [
             {
                 "id": comment.id,
@@ -377,10 +376,8 @@ def get_club_posts(
             for comment in post.comments[:3]
         ]
 
-        # Images
         images = [{"id": img.id, "url": img.url} for img in post.images]
 
-        # Author
         author = {
             "id": post.author.id,
             "name": post.author.name,
@@ -678,9 +675,11 @@ def like_post(
         raise HTTPException(status_code=400, detail="Error al dar like") from err
 
         # Count total likes
-        db.refresh(post)
-    like_count = len(post.likes)
-
+    like_count = (
+        db.query(func.count(ClubPostLike.id_user))
+        .filter(ClubPostLike.id_post == post_id)
+        .scalar()
+    )
     return {
         "id_post": post_id,
         "id_user": current_user.id,
@@ -699,8 +698,6 @@ def unlike_post(
     if not club:
         raise HTTPException(status_code=404, detail="Club no encontrado")
 
-    _verify_membership(club, current_user.id, db, require_leader=False)
-
     post = (
         db.query(ClubPost)
         .filter(ClubPost.id == post_id, ClubPost.id_club == club_id)
@@ -709,25 +706,28 @@ def unlike_post(
     if not post:
         raise HTTPException(status_code=404, detail="Publicación no encontrada")
 
-    # Check if liked
     like = (
         db.query(ClubPostLike)
         .filter(
-            ClubPostLike.id_post == post_id, ClubPostLike.id_user == current_user.id
+            ClubPostLike.id_post == post_id,
+            ClubPostLike.id_user == current_user.id,
         )
         .first()
     )
     if not like:
         raise HTTPException(
-            status_code=400, detail="El usuario no había dado like a esta publicación"
+            status_code=400,
+            detail="El usuario no había dado like a esta publicación",
         )
 
     db.delete(like)
     db.commit()
 
-    # Count total likes
-    db.refresh(post)
-    like_count = len(post.likes)
+    like_count = (
+        db.query(func.count(ClubPostLike.id_user))
+        .filter(ClubPostLike.id_post == post_id)
+        .scalar()
+    ) or 0
 
     return {
         "id_post": post_id,

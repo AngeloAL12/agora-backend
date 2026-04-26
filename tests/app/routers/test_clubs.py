@@ -1,3 +1,5 @@
+from datetime import UTC, datetime, timedelta
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -9,6 +11,8 @@ from app.models.auth.user import User
 from app.models.club.club import Club
 from app.models.club.club_category import ClubCategory
 from app.models.club.club_member import ClubMember
+from app.models.club.post_comment import ClubPostComment
+from app.models.club.post_like import ClubPostLike
 from app.schemas.auth.auth import CurrentUser
 
 
@@ -582,7 +586,7 @@ def test_transfer_leadership_same_leader_rejected(db, clear_dependency_overrides
 
 
 def create_event(db, club_id, author_id, title="Evento Test", future=True):
-    from datetime import UTC, datetime, timedelta
+    from datetime import datetime, timedelta
 
     ensure_user(db, author_id)
     from app.models.club.event import ClubEvent
@@ -655,7 +659,7 @@ def test_create_event_as_leader(db, clear_dependency_overrides):
     category = create_category(db)
     club = create_club(db, category.id, leader_id=1)
 
-    from datetime import UTC, datetime, timedelta
+    from datetime import datetime, timedelta
 
     client = TestClient(app)
     response = client.post(
@@ -682,8 +686,6 @@ def test_create_event_as_non_leader_forbidden(db, clear_dependency_overrides):
     club = create_club(db, category.id, leader_id=1)
     create_membership(db, club.id, 2)
 
-    from datetime import datetime, timedelta
-
     client = TestClient(app)
     response = client.post(
         f"/clubs/{club.id}/events",
@@ -702,8 +704,6 @@ def test_create_event_as_non_leader_forbidden(db, clear_dependency_overrides):
 
 def test_create_event_club_not_found(db, clear_dependency_overrides):
     app.dependency_overrides[get_current_user] = override_user(1)
-
-    from datetime import datetime, timedelta
 
     client = TestClient(app)
     response = client.post(
@@ -726,8 +726,6 @@ def test_create_event_past_date_rejected(db, clear_dependency_overrides):
 
     category = create_category(db)
     club = create_club(db, category.id, leader_id=1)
-
-    from datetime import datetime, timedelta
 
     client = TestClient(app)
     response = client.post(
@@ -950,3 +948,143 @@ def test_create_post_comment(db, clear_dependency_overrides):
 
     assert response.status_code == 201
     assert response.json()["content"] == "Comentario"
+
+
+def test_like_post(db, clear_dependency_overrides):
+    app.dependency_overrides[get_current_user] = override_user(1)
+
+    category = create_category(db)
+    club = create_club(db, category.id, leader_id=1)
+
+    client = TestClient(app)
+
+    post_response = client.post(
+        f"/clubs/{club.id}/posts",
+        json={"content": "Post con like", "images": []},
+    )
+    post_id = post_response.json()["id"]
+
+    response = client.post(f"/clubs/{club.id}/posts/{post_id}/like")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["id_post"] == post_id
+    assert data["id_user"] == 1
+    assert data["like_count"] == 1
+
+    assert (
+        db.query(ClubPostLike)
+        .filter(
+            ClubPostLike.id_post == post_id,
+            ClubPostLike.id_user == 1,
+        )
+        .first()
+        is not None
+    )
+
+
+def test_unlike_post(db, clear_dependency_overrides):
+    app.dependency_overrides[get_current_user] = override_user(1)
+
+    category = create_category(db)
+    club = create_club(db, category.id, leader_id=1)
+
+    client = TestClient(app)
+
+    post_response = client.post(
+        f"/clubs/{club.id}/posts",
+        json={"content": "Post con unlike", "images": []},
+    )
+    post_id = post_response.json()["id"]
+
+    client.post(f"/clubs/{club.id}/posts/{post_id}/like")
+
+    response = client.delete(f"/clubs/{club.id}/posts/{post_id}/like")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["id_post"] == post_id
+    assert data["id_user"] == 1
+    assert data["like_count"] == 0
+
+    assert (
+        db.query(ClubPostLike)
+        .filter(
+            ClubPostLike.id_post == post_id,
+            ClubPostLike.id_user == 1,
+        )
+        .first()
+        is None
+    )
+
+
+def test_get_post_comments(db, clear_dependency_overrides):
+    app.dependency_overrides[get_current_user] = override_user(1)
+
+    category = create_category(db)
+    club = create_club(db, category.id, leader_id=1)
+
+    client = TestClient(app)
+
+    post_response = client.post(
+        f"/clubs/{club.id}/posts",
+        json={"content": "Post con comentarios", "images": []},
+    )
+    post_id = post_response.json()["id"]
+
+    client.post(
+        f"/clubs/{club.id}/posts/{post_id}/comments",
+        json={"content": "Primer comentario"},
+    )
+
+    response = client.get(f"/clubs/{club.id}/posts/{post_id}/comments")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 1
+    assert data[0]["content"] == "Primer comentario"
+    assert data[0]["id_post"] == post_id
+    assert data[0]["user"]["id"] == 1
+
+
+def test_delete_post_comment(db, clear_dependency_overrides):
+    app.dependency_overrides[get_current_user] = override_user(1)
+
+    category = create_category(db)
+    club = create_club(db, category.id, leader_id=1)
+
+    client = TestClient(app)
+
+    post_response = client.post(
+        f"/clubs/{club.id}/posts",
+        json={"content": "Post con comentario", "images": []},
+    )
+    post_id = post_response.json()["id"]
+
+    comment_response = client.post(
+        f"/clubs/{club.id}/posts/{post_id}/comments",
+        json={"content": "Comentario a borrar"},
+    )
+    comment_id = comment_response.json()["id"]
+
+    response = client.delete(f"/clubs/{club.id}/posts/{post_id}/comments/{comment_id}")
+
+    assert response.status_code == 204
+
+    deleted_comment = (
+        db.query(ClubPostComment).filter(ClubPostComment.id == comment_id).first()
+    )
+
+    assert deleted_comment is None
+
+
+def test_list_events_non_member_forbidden(db, clear_dependency_overrides):
+    app.dependency_overrides[get_current_user] = override_user(2)
+
+    category = create_category(db)
+    club = create_club(db, category.id, leader_id=1)
+
+    client = TestClient(app)
+    response = client.get(f"/clubs/{club.id}/events")
+
+    assert response.status_code == 403

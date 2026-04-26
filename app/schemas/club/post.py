@@ -2,13 +2,9 @@ from datetime import datetime
 
 from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field
 
+from app.schemas.club.user import UserOut
 
-class UserOut(BaseModel):
-    id: int
-    name: str
-    photo: str | None
-
-    model_config = ConfigDict(from_attributes=True)
+model_config = ConfigDict(from_attributes=True)
 
 
 class PostImageOut(BaseModel):
