@@ -37,6 +37,7 @@ from app.schemas.auth.auth import CurrentUser
 from app.schemas.club.club import (
     ClubCategoryResponse,
     ClubDetailResponse,
+    ClubMemberResponse,
     ClubResponse,
 )
 from app.schemas.club.event import EventCreate, EventResponse, EventUpdate
@@ -778,6 +779,50 @@ def transfer_leadership(
     db.commit()
     db.refresh(club)
     return {"message": "Liderazgo transferido"}
+
+
+@router.get("/{club_id}/members", response_model=list[ClubMemberResponse])
+def get_club_members(
+    club_id: int,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    club = db.query(Club).filter(Club.id == club_id).first()
+    if not club:
+        raise HTTPException(status_code=404, detail="Club no encontrado")
+
+    _verify_membership(club, current_user.id, db, require_leader=False)
+
+    regular_members = (
+        db.query(User)
+        .join(ClubMember, ClubMember.id_user == User.id)
+        .filter(ClubMember.id_club == club_id)
+        .all()
+    )
+
+    leader = db.query(User).filter(User.id == club.id_leader).first()
+
+    result: list[ClubMemberResponse] = []
+    if leader:
+        result.append(
+            ClubMemberResponse(
+                id=leader.id,
+                name=leader.name,
+                photo=_build_image_url(leader.photo),
+                is_leader=True,
+            )
+        )
+    for user in regular_members:
+        if user.id != club.id_leader:
+            result.append(
+                ClubMemberResponse(
+                    id=user.id,
+                    name=user.name,
+                    photo=_build_image_url(user.photo),
+                    is_leader=False,
+                )
+            )
+    return result
 
 
 # --- Endpoints de Eventos ---
