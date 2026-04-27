@@ -27,3 +27,12 @@ class ClubResponse(BaseModel):
 
 class ClubDetailResponse(ClubResponse):
     members_count: int
+
+
+class ClubMemberResponse(BaseModel):
+    id: int
+    name: str
+    photo: str | None
+    is_leader: bool
+
+    model_config = ConfigDict(from_attributes=True)
