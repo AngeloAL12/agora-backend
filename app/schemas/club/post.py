@@ -1,10 +1,8 @@
 from datetime import datetime
 
-from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.schemas.club.user import UserOut
-
-model_config = ConfigDict(from_attributes=True)
 
 
 class PostImageOut(BaseModel):
@@ -40,7 +38,6 @@ class PostResponse(BaseModel):
 
 class PostCreate(BaseModel):
     content: str = Field(..., min_length=1, max_length=1000)
-    images: list[AnyHttpUrl] = Field(default_factory=list, max_length=5)
 
 
 class CommentResponse(BaseModel):

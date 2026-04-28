@@ -1,4 +1,13 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    UploadFile,
+    status,
+)
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -11,6 +20,7 @@ from app.models.club.club_member import ClubMember
 from app.models.club.event import ClubEvent
 from app.models.club.post import ClubPost
 from app.models.club.post_comment import ClubPostComment
+from app.models.club.post_image import ClubPostImage
 from app.models.club.post_like import ClubPostLike
 from app.schemas.auth.auth import CurrentUser
 from app.schemas.club.club import (
@@ -24,7 +34,6 @@ from app.schemas.club.post import (
     CommentCreate,
     CommentResponse,
     LikeResponse,
-    PostCreate,
     PostResponse,
 )
 from app.services.club.club_service import (
@@ -162,13 +171,29 @@ def delete_club(
     if club.id_leader != current_user.id:
         raise HTTPException(status_code=403, detail="Solo el líder puede eliminar")
 
-    # Fallback mínimo para SQLite en tests.
-    # En PostgreSQL producción, las FK ya tienen ON DELETE CASCADE.
+    # Fallback para SQLite en tests — PostgreSQL usa ON DELETE CASCADE en FK.
     if db.bind and db.bind.dialect.name == "sqlite":
-        db.query(ClubMember).filter(ClubMember.id_club == club_id).delete(
+        post_ids = [
+            r[0]
+            for r in db.query(ClubPost.id).filter(ClubPost.id_club == club_id).all()
+        ]
+        if post_ids:
+            db.query(ClubPostLike).filter(
+                ClubPostLike.id_post.in_(post_ids)
+            ).delete(synchronize_session=False)
+            db.query(ClubPostComment).filter(
+                ClubPostComment.id_post.in_(post_ids)
+            ).delete(synchronize_session=False)
+            db.query(ClubPostImage).filter(
+                ClubPostImage.id_post.in_(post_ids)
+            ).delete(synchronize_session=False)
+        db.query(ClubPost).filter(ClubPost.id_club == club_id).delete(
             synchronize_session=False
         )
         db.query(ClubEvent).filter(ClubEvent.id_club == club_id).delete(
+            synchronize_session=False
+        )
+        db.query(ClubMember).filter(ClubMember.id_club == club_id).delete(
             synchronize_session=False
         )
 
@@ -321,22 +346,26 @@ def get_club_posts(
     response_model=PostResponse,
     status_code=status.HTTP_201_CREATED,
 )
-def create_club_post(
+async def create_club_post(
     club_id: int,
-    payload: PostCreate,
+    content: str = Form(..., min_length=1, max_length=1000),
+    images: list[UploadFile] = File(default=[]),
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_current_user),
 ):
+    if len(images) > 5:
+        raise HTTPException(status_code=400, detail="Máximo 5 imágenes por publicación")
+
     club = db.query(Club).filter(Club.id == club_id).first()
     if not club:
         raise HTTPException(status_code=404, detail="Club no encontrado")
 
-    return create_club_post_service(
+    return await create_club_post_service(
         db=db,
         club=club,
         user_id=current_user.id,
-        content=payload.content,
-        images=payload.images,
+        content=content,
+        images=images,
     )
 
 
@@ -511,7 +540,11 @@ def delete_post_comment(
     return None
 
 
-@router.post("/{club_id}/posts/{post_id}/like", response_model=LikeResponse)
+@router.post(
+    "/{club_id}/posts/{post_id}/like",
+    response_model=LikeResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 def like_post(
     club_id: int,
     post_id: int,
@@ -553,7 +586,6 @@ def like_post(
         db.rollback()
         raise HTTPException(status_code=400, detail="Error al dar like") from err
 
-        # Count total likes
     like_count = (
         db.query(func.count(ClubPostLike.id_user))
         .filter(ClubPostLike.id_post == post_id)
@@ -576,6 +608,8 @@ def unlike_post(
     club = db.query(Club).filter(Club.id == club_id).first()
     if not club:
         raise HTTPException(status_code=404, detail="Club no encontrado")
+
+    verify_membership(db, club, current_user.id, require_leader=False)
 
     post = (
         db.query(ClubPost)

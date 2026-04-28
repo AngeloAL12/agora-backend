@@ -6,7 +6,6 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.database import Base
 
 if TYPE_CHECKING:
-    from app.models import User
     from app.models.club.post import ClubPost
 
 
@@ -24,11 +23,6 @@ class ClubPostLike(Base):
         nullable=False,
     )
 
-    user: Mapped["User"] = relationship(
-        "User",
-        foreign_keys=[id_user],
-        lazy="joined",
-    )
     post: Mapped["ClubPost"] = relationship(
         "ClubPost",
         back_populates="likes",
