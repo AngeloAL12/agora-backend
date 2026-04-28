@@ -178,15 +178,15 @@ def delete_club(
             for r in db.query(ClubPost.id).filter(ClubPost.id_club == club_id).all()
         ]
         if post_ids:
-            db.query(ClubPostLike).filter(
-                ClubPostLike.id_post.in_(post_ids)
-            ).delete(synchronize_session=False)
+            db.query(ClubPostLike).filter(ClubPostLike.id_post.in_(post_ids)).delete(
+                synchronize_session=False
+            )
             db.query(ClubPostComment).filter(
                 ClubPostComment.id_post.in_(post_ids)
             ).delete(synchronize_session=False)
-            db.query(ClubPostImage).filter(
-                ClubPostImage.id_post.in_(post_ids)
-            ).delete(synchronize_session=False)
+            db.query(ClubPostImage).filter(ClubPostImage.id_post.in_(post_ids)).delete(
+                synchronize_session=False
+            )
         db.query(ClubPost).filter(ClubPost.id_club == club_id).delete(
             synchronize_session=False
         )
