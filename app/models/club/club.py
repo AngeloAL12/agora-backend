@@ -28,4 +28,6 @@ class Club(Base):
 
     category: Mapped["ClubCategory"] = relationship(back_populates="clubs")
     leader: Mapped["User"] = relationship(back_populates="clubs_led")
-    members: Mapped[list["ClubMember"]] = relationship(back_populates="club")
+    members: Mapped[list["ClubMember"]] = relationship(
+        back_populates="club", passive_deletes=True
+    )

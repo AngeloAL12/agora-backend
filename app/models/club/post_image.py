@@ -14,7 +14,9 @@ class ClubPostImage(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     url: Mapped[str] = mapped_column(String(500), nullable=False)
-    id_post: Mapped[int] = mapped_column(ForeignKey("club_post.id"), nullable=False)
+    id_post: Mapped[int] = mapped_column(
+        ForeignKey("club_post.id", ondelete="CASCADE"), nullable=False
+    )
 
     # Relationships
     post: Mapped["ClubPost"] = relationship(

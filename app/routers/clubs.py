@@ -20,7 +20,6 @@ from app.models.club.club_member import ClubMember
 from app.models.club.event import ClubEvent
 from app.models.club.post import ClubPost
 from app.models.club.post_comment import ClubPostComment
-from app.models.club.post_image import ClubPostImage
 from app.models.club.post_like import ClubPostLike
 from app.schemas.auth.auth import CurrentUser
 from app.schemas.club.club import (
@@ -170,32 +169,6 @@ def delete_club(
 
     if club.id_leader != current_user.id:
         raise HTTPException(status_code=403, detail="Solo el líder puede eliminar")
-
-    # Fallback para SQLite en tests — PostgreSQL usa ON DELETE CASCADE en FK.
-    if db.bind and db.bind.dialect.name == "sqlite":
-        post_ids = [
-            r[0]
-            for r in db.query(ClubPost.id).filter(ClubPost.id_club == club_id).all()
-        ]
-        if post_ids:
-            db.query(ClubPostLike).filter(ClubPostLike.id_post.in_(post_ids)).delete(
-                synchronize_session=False
-            )
-            db.query(ClubPostComment).filter(
-                ClubPostComment.id_post.in_(post_ids)
-            ).delete(synchronize_session=False)
-            db.query(ClubPostImage).filter(ClubPostImage.id_post.in_(post_ids)).delete(
-                synchronize_session=False
-            )
-        db.query(ClubPost).filter(ClubPost.id_club == club_id).delete(
-            synchronize_session=False
-        )
-        db.query(ClubEvent).filter(ClubEvent.id_club == club_id).delete(
-            synchronize_session=False
-        )
-        db.query(ClubMember).filter(ClubMember.id_club == club_id).delete(
-            synchronize_session=False
-        )
 
     db.delete(club)
     db.commit()

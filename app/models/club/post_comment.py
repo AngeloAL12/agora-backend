@@ -16,7 +16,9 @@ class ClubPostComment(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     content: Mapped[str] = mapped_column(Text, nullable=False)
-    id_post: Mapped[int] = mapped_column(ForeignKey("club_post.id"), nullable=False)
+    id_post: Mapped[int] = mapped_column(
+        ForeignKey("club_post.id", ondelete="CASCADE"), nullable=False
+    )
     id_user: Mapped[int] = mapped_column(ForeignKey("user.id"), nullable=False)
 
     created_at: Mapped[datetime] = mapped_column(

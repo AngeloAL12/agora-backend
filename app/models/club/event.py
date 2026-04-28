@@ -21,7 +21,9 @@ class ClubEvent(Base):
     latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
     longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
 
-    id_club: Mapped[int] = mapped_column(ForeignKey("club.id"), nullable=False)
+    id_club: Mapped[int] = mapped_column(
+        ForeignKey("club.id", ondelete="CASCADE"), nullable=False
+    )
     id_author: Mapped[int] = mapped_column(ForeignKey("user.id"), nullable=False)
 
     created_at: Mapped[datetime] = mapped_column(

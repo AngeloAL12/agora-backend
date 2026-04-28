@@ -13,7 +13,7 @@ class ClubPostLike(Base):
     __tablename__ = "club_post_like"
 
     id_post: Mapped[int] = mapped_column(
-        ForeignKey("club_post.id"),
+        ForeignKey("club_post.id", ondelete="CASCADE"),
         primary_key=True,
         nullable=False,
     )

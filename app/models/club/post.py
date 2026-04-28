@@ -18,7 +18,9 @@ class ClubPost(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     content: Mapped[str] = mapped_column(Text, nullable=False)
-    id_club: Mapped[int] = mapped_column(ForeignKey("club.id"), nullable=False)
+    id_club: Mapped[int] = mapped_column(
+        ForeignKey("club.id", ondelete="CASCADE"), nullable=False
+    )
     id_author: Mapped[int] = mapped_column(ForeignKey("user.id"), nullable=False)
 
     created_at: Mapped[datetime] = mapped_column(
@@ -35,18 +37,21 @@ class ClubPost(Base):
         "ClubPostImage",
         back_populates="post",
         cascade="all, delete-orphan",
+        passive_deletes=True,
         lazy="joined",
     )
     likes: Mapped[list["ClubPostLike"]] = relationship(
         "ClubPostLike",
         back_populates="post",
         cascade="all, delete-orphan",
+        passive_deletes=True,
         lazy="selectin",
     )
     comments: Mapped[list["ClubPostComment"]] = relationship(
         "ClubPostComment",
         back_populates="post",
         cascade="all, delete-orphan",
+        passive_deletes=True,
         order_by="ClubPostComment.created_at.asc()",
         lazy="selectin",
     )
