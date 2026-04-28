@@ -301,17 +301,21 @@ async def get_all_complaints(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(require_staff_role),
 ):
-    rows = db.execute(
-        select(Complaint, func.count(Complaint.id).over().label("total"))
-        .options(selectinload(Complaint.images), selectinload(Complaint.evidences))
-        .order_by(Complaint.created_at.desc(), Complaint.id.desc())
-        .limit(limit)
-        .offset(offset)
-    ).all()
+    total = db.execute(select(func.count()).select_from(Complaint)).scalar_one()
 
-    total = rows[0][1] if rows else 0
+    rows = (
+        db.execute(
+            select(Complaint)
+            .options(selectinload(Complaint.images), selectinload(Complaint.evidences))
+            .order_by(Complaint.created_at.desc(), Complaint.id.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        .scalars()
+        .all()
+    )
 
-    complaint_items = [ComplaintOut.model_validate(row[0]) for row in rows]
+    complaint_items = [ComplaintOut.model_validate(row) for row in rows]
 
     return ComplaintListResponse(
         items=complaint_items,

@@ -387,6 +387,22 @@ def test_get_all_complaints_pagination(db, clean_db, clear_dependency_overrides)
     assert all("description" not in item for item in data["items"])
 
 
+def test_get_all_complaints_pagination_empty_db(
+    db, clean_db, clear_dependency_overrides
+):
+    _override_current_user_with_role(RoleName.STAFF)
+
+    client = TestClient(app)
+    response = client.get("/complaints?limit=10&offset=0")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total"] == 0
+    assert data["items"] == []
+    assert data["limit"] == 10
+    assert data["offset"] == 0
+
+
 def test_non_staff_cannot_access_get_all_complaints(db, clear_dependency_overrides):
     user = _create_user(
         db,
