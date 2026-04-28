@@ -22,7 +22,6 @@ class EventCreate(EventBase):
     @field_validator("date")
     @classmethod
     def date_must_be_future(cls, v: datetime):
-        # Ensure both datetimes are timezone-aware for comparison
         if v.tzinfo is None:
             v = v.replace(tzinfo=UTC)
         if v <= datetime.now(UTC):
@@ -40,8 +39,7 @@ class EventUpdate(BaseModel):
     @field_validator("date")
     @classmethod
     def date_must_be_future(cls, v: datetime | None):
-        if v:
-            # Ensure both datetimes are timezone-aware for comparison
+        if v is not None:
             if v.tzinfo is None:
                 v = v.replace(tzinfo=UTC)
             if v <= datetime.now(UTC):

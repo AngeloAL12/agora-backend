@@ -15,7 +15,9 @@ class ClubMember(Base):
     __table_args__ = (UniqueConstraint("id_club", "id_user"),)
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    id_club: Mapped[int] = mapped_column(ForeignKey("club.id"), nullable=False)
+    id_club: Mapped[int] = mapped_column(
+        ForeignKey("club.id", ondelete="CASCADE"), nullable=False
+    )
     id_user: Mapped[int] = mapped_column(ForeignKey("user.id"), nullable=False)
     joined_at: Mapped[DateTime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

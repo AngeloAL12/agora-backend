@@ -1,4 +1,6 @@
 import os
+import uuid
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from sqlalchemy import create_engine, event
@@ -78,6 +80,16 @@ def clean_db(db):
 def clear_dependency_overrides():
     yield
     app.dependency_overrides.clear()
+
+
+@pytest.fixture(autouse=True)
+def mock_storage_service():
+    with patch(
+        "app.services.club.club_service.storage_service.upload_file",
+        new_callable=AsyncMock,
+        side_effect=lambda file, bucket, prefix: f"{prefix}/{uuid.uuid4()}.jpg",
+    ):
+        yield
 
 
 @pytest.fixture(autouse=True)

@@ -14,6 +14,10 @@ from app.models.club import (  # noqa: F401
     ClubEvent,
     ClubMember,
     ClubMessage,
+    ClubPost,
+    ClubPostComment,
+    ClubPostImage,
+    ClubPostLike,
 )
 from app.models.complaint import (  # noqa: F401
     Complaint,

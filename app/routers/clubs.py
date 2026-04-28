@@ -33,6 +33,9 @@ from app.models.club.club_category import ClubCategory
 from app.models.club.club_member import ClubMember
 from app.models.club.event import ClubEvent
 from app.models.club.message import ClubMessage
+from app.models.club.post import ClubPost
+from app.models.club.post_comment import ClubPostComment
+from app.models.club.post_like import ClubPostLike
 from app.schemas.auth.auth import CurrentUser
 from app.schemas.club.club import (
     ClubCategoryResponse,
@@ -46,6 +49,16 @@ from app.schemas.club.message import (
     ClubMessageResponse,
     ClubMessageUserResponse,
 )
+from app.schemas.club.post import (
+    CommentCreate,
+    CommentResponse,
+    LikeResponse,
+    PostResponse,
+)
+from app.services.club.club_service import (
+    create_club_post_service,
+    get_club_posts_service,
+)
 from app.services.push_service import send_push_notification
 from app.services.redis_service import redis_chat_manager
 from app.services.storage_service import storage_service
@@ -55,7 +68,6 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/clubs", tags=["clubs"])
 
 
-# --- Helper de validación de membresía para eventos ---
 def _verify_membership(
     club: Club, user_id: int, db: Session, require_leader: bool = False
 ):
@@ -661,7 +673,6 @@ async def delete_club(
             object_key=club.cover_image,
         )
 
-    db.query(ClubMember).filter(ClubMember.id_club == club_id).delete()
     db.delete(club)
     db.commit()
     return {"message": "Club eliminado"}
@@ -823,6 +834,335 @@ def get_club_members(
                 )
             )
     return result
+
+
+# --- Endpoints de Publicaciones ---
+
+
+@router.get("/{club_id}/posts", response_model=list[PostResponse])
+def get_club_posts(
+    club_id: int,
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    club = db.query(Club).filter(Club.id == club_id).first()
+    if not club:
+        raise HTTPException(status_code=404, detail="Club no encontrado")
+
+    return get_club_posts_service(
+        db=db,
+        club=club,
+        user_id=current_user.id,
+        page=page,
+        limit=limit,
+    )
+
+
+@router.post(
+    "/{club_id}/posts",
+    response_model=PostResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_club_post(
+    club_id: int,
+    content: str = Form(..., min_length=1, max_length=1000),
+    images: list[UploadFile] = File(default=[]),
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    if len(images) > 5:
+        raise HTTPException(status_code=400, detail="Máximo 5 imágenes por publicación")
+
+    club = db.query(Club).filter(Club.id == club_id).first()
+    if not club:
+        raise HTTPException(status_code=404, detail="Club no encontrado")
+
+    return await create_club_post_service(
+        db=db,
+        club=club,
+        user_id=current_user.id,
+        content=content,
+        images=images,
+    )
+
+
+@router.delete("/{club_id}/posts/{post_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_club_post(
+    club_id: int,
+    post_id: int,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    club = db.query(Club).filter(Club.id == club_id).first()
+    if not club:
+        raise HTTPException(status_code=404, detail="Club no encontrado")
+
+    _verify_membership(club, current_user.id, db, require_leader=False)
+
+    post = (
+        db.query(ClubPost)
+        .filter(ClubPost.id == post_id, ClubPost.id_club == club_id)
+        .first()
+    )
+    if not post:
+        raise HTTPException(status_code=404, detail="Publicación no encontrada")
+
+    if post.id_author != current_user.id and club.id_leader != current_user.id:
+        raise HTTPException(
+            status_code=403,
+            detail="Solo el autor o el líder pueden eliminar esta publicación",
+        )
+
+    db.delete(post)
+    db.commit()
+    return None
+
+
+@router.get("/{club_id}/posts/{post_id}/comments", response_model=list[CommentResponse])
+def get_post_comments(
+    club_id: int,
+    post_id: int,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    club = db.query(Club).filter(Club.id == club_id).first()
+    if not club:
+        raise HTTPException(status_code=404, detail="Club no encontrado")
+
+    _verify_membership(club, current_user.id, db, require_leader=False)
+
+    post = (
+        db.query(ClubPost)
+        .filter(ClubPost.id == post_id, ClubPost.id_club == club_id)
+        .first()
+    )
+    if not post:
+        raise HTTPException(status_code=404, detail="Publicación no encontrada")
+
+    comments = (
+        db.query(ClubPostComment)
+        .filter(ClubPostComment.id_post == post_id)
+        .order_by(ClubPostComment.created_at.asc())
+        .all()
+    )
+
+    return [
+        {
+            "id": comment.id,
+            "id_post": comment.id_post,
+            "content": comment.content,
+            "created_at": comment.created_at,
+            "user": {
+                "id": comment.user.id,
+                "name": comment.user.name,
+                "photo": comment.user.photo,
+            },
+        }
+        for comment in comments
+    ]
+
+
+@router.post(
+    "/{club_id}/posts/{post_id}/comments",
+    response_model=CommentResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_post_comment(
+    club_id: int,
+    post_id: int,
+    payload: CommentCreate,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    club = db.query(Club).filter(Club.id == club_id).first()
+    if not club:
+        raise HTTPException(status_code=404, detail="Club no encontrado")
+
+    _verify_membership(club, current_user.id, db, require_leader=False)
+
+    post = (
+        db.query(ClubPost)
+        .filter(ClubPost.id == post_id, ClubPost.id_club == club_id)
+        .first()
+    )
+    if not post:
+        raise HTTPException(status_code=404, detail="Publicación no encontrada")
+
+    comment = ClubPostComment(
+        content=payload.content,
+        id_post=post_id,
+        id_user=current_user.id,
+    )
+
+    try:
+        db.add(comment)
+        db.commit()
+        db.refresh(comment)
+    except IntegrityError as err:
+        db.rollback()
+        raise HTTPException(
+            status_code=400, detail="Error al crear el comentario"
+        ) from err
+
+    return {
+        "id": comment.id,
+        "id_post": comment.id_post,
+        "content": comment.content,
+        "created_at": comment.created_at,
+        "user": {
+            "id": comment.user.id,
+            "name": comment.user.name,
+            "photo": comment.user.photo,
+        },
+    }
+
+
+@router.delete(
+    "/{club_id}/posts/{post_id}/comments/{comment_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_post_comment(
+    club_id: int,
+    post_id: int,
+    comment_id: int,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    club = db.query(Club).filter(Club.id == club_id).first()
+    if not club:
+        raise HTTPException(status_code=404, detail="Club no encontrado")
+
+    _verify_membership(club, current_user.id, db, require_leader=False)
+    comment = (
+        db.query(ClubPostComment)
+        .filter(
+            ClubPostComment.id == comment_id,
+            ClubPostComment.id_post == post_id,
+        )
+        .first()
+    )
+    if not comment:
+        raise HTTPException(status_code=404, detail="Comentario no encontrado")
+
+    if comment.id_user != current_user.id and club.id_leader != current_user.id:
+        raise HTTPException(
+            status_code=403,
+            detail="Solo el autor del comentario o el líder pueden eliminarlo",
+        )
+
+    db.delete(comment)
+    db.commit()
+    return None
+
+
+@router.post(
+    "/{club_id}/posts/{post_id}/like",
+    response_model=LikeResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def like_post(
+    club_id: int,
+    post_id: int,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    club = db.query(Club).filter(Club.id == club_id).first()
+    if not club:
+        raise HTTPException(status_code=404, detail="Club no encontrado")
+
+    _verify_membership(club, current_user.id, db, require_leader=False)
+    post = (
+        db.query(ClubPost)
+        .filter(ClubPost.id == post_id, ClubPost.id_club == club_id)
+        .first()
+    )
+    if not post:
+        raise HTTPException(status_code=404, detail="Publicación no encontrada")
+
+    existing_like = (
+        db.query(ClubPostLike)
+        .filter(
+            ClubPostLike.id_post == post_id, ClubPostLike.id_user == current_user.id
+        )
+        .first()
+    )
+    if existing_like:
+        raise HTTPException(
+            status_code=400, detail="El usuario ya dio like a esta publicación"
+        )
+
+    like = ClubPostLike(id_post=post_id, id_user=current_user.id)
+
+    try:
+        db.add(like)
+        db.commit()
+    except IntegrityError as err:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="Error al dar like") from err
+
+    like_count = (
+        db.query(func.count(ClubPostLike.id_user))
+        .filter(ClubPostLike.id_post == post_id)
+        .scalar()
+    )
+    return {
+        "id_post": post_id,
+        "id_user": current_user.id,
+        "like_count": like_count,
+    }
+
+
+@router.delete("/{club_id}/posts/{post_id}/like", response_model=LikeResponse)
+def unlike_post(
+    club_id: int,
+    post_id: int,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    club = db.query(Club).filter(Club.id == club_id).first()
+    if not club:
+        raise HTTPException(status_code=404, detail="Club no encontrado")
+
+    _verify_membership(club, current_user.id, db, require_leader=False)
+
+    post = (
+        db.query(ClubPost)
+        .filter(ClubPost.id == post_id, ClubPost.id_club == club_id)
+        .first()
+    )
+    if not post:
+        raise HTTPException(status_code=404, detail="Publicación no encontrada")
+
+    like = (
+        db.query(ClubPostLike)
+        .filter(
+            ClubPostLike.id_post == post_id,
+            ClubPostLike.id_user == current_user.id,
+        )
+        .first()
+    )
+    if not like:
+        raise HTTPException(
+            status_code=400,
+            detail="El usuario no había dado like a esta publicación",
+        )
+
+    db.delete(like)
+    db.commit()
+
+    like_count = (
+        db.query(func.count(ClubPostLike.id_user))
+        .filter(ClubPostLike.id_post == post_id)
+        .scalar()
+    ) or 0
+
+    return {
+        "id_post": post_id,
+        "id_user": current_user.id,
+        "like_count": like_count,
+    }
 
 
 # --- Endpoints de Eventos ---
