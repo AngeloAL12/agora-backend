@@ -5,7 +5,7 @@ meta {
 }
 
 get {
-  url: {{base_url}}/auth/me
+  url: {{base_url}}/users/me
   body: none
   auth: bearer
 }
@@ -17,4 +17,9 @@ auth:bearer {
 settings {
   encodeUrl: true
   timeout: 0
+}
+
+docs {
+  # Obtener Sesión Actual
+  Recupera los detalles de la sesión y el perfil del usuario autenticado a través del Bearer Token.
 }

@@ -54,6 +54,9 @@ uv sync --group dev
 
 - `DATABASE_URL`
 - `SECRET_KEY`
+- `REDIS_URL` (opcional, default: `redis://localhost:6379/0`)
+- `REDIS_SOCKET_CONNECT_TIMEOUT` (opcional, segundos; default: `2.0`)
+- `REDIS_SOCKET_TIMEOUT` (opcional, segundos; default: `None`)
 
 4. Aplicar migraciones:
 

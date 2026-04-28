@@ -6,11 +6,39 @@ meta {
 
 post {
   url: {{base_url}}/auth/google/mobile-login
-  body: none
+  body: json
   auth: inherit
+}
+
+body:json {
+  {
+    "token": "{{google_id_token}}"
+  }
+}
+
+script:post-response {
+  if (res.getStatus() === 200) {
+    const body = res.getBody();
+
+    if (body.access_token) {
+      bru.setEnvVar("auth_token", body.access_token);
+    }
+
+    if (body.refresh_token) {
+      bru.setEnvVar("refresh_token", body.refresh_token);
+    }
+  }
 }
 
 settings {
   encodeUrl: true
   timeout: 0
+}
+
+docs {
+  # Inicio de Sesión Google Mobile
+  Procesa el inicio de sesión desde la aplicación móvil utilizando el SDK de Google.
+
+  ## Nota
+  Este endpoint espera un `token` (ID Token) de Google y devuelve `access_token` y `refresh_token`.
 }

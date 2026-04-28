@@ -6,7 +6,7 @@ meta {
 
 post {
   url: {{base_url}}/complaints
-  body: json
+  body: multipartForm
   auth: bearer
 }
 
@@ -14,7 +14,31 @@ auth:bearer {
   token: {{auth_token}}
 }
 
+body:multipart-form {
+  title: 
+  description: 
+  category: 
+  type: 
+  id_building: 
+  classroom: 
+  images: 
+}
+
 settings {
   encodeUrl: true
   timeout: 0
+}
+
+docs {
+  # Crear Nueva Queja
+  Permite a un usuario enviar una queja sobre un problema en el campus (ej. infraestructura, mantenimiento).
+  
+  ## Parámetros del Formulario (Multipart)
+  - `title`: Título corto del problema.
+  - `description`: Descripción detallada.
+  - `category`: Categoría (ej. LIMPIEZA, INFRAESTRUCTURA).
+  - `type`: Tipo de queja.
+  - `id_building`: ID del edificio donde ocurre el problema.
+  - `classroom`: Aula o área específica (opcional).
+  - `images`: Archivos de imagen (múltiples permitidos).
 }

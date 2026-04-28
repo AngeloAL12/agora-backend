@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     SECRET_KEY: str
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 30
 
     GOOGLE_CLIENT_ID: str = ""
     GOOGLE_IOS_CLIENT_ID: str = ""
@@ -15,8 +16,13 @@ class Settings(BaseSettings):
     MICROSOFT_TENANT_ID: str = ""
 
     API_TESTING_SECRET: str | None = None
+    REDIS_URL: str | None = None
+    REDIS_SOCKET_CONNECT_TIMEOUT: float = 2.0
+    REDIS_SOCKET_TIMEOUT: float | None = None
+    REDIS_HEALTH_CHECK_INTERVAL: int = 30
+    REDIS_TIMEOUT_SECONDS: float = 0.1
+    REDIS_RETRY_COOLDOWN_SECONDS: float = 5.0
 
-    # Cloudflare R2 Storage
     R2_ACCOUNT_ID: str
     R2_ACCESS_KEY_ID: str
     R2_SECRET_ACCESS_KEY: str
@@ -24,7 +30,9 @@ class Settings(BaseSettings):
     ENV: str = "development"
     R2_BUCKET_PRIVATE: str
     R2_BUCKET_PUBLIC: str
-    R2_PUBLIC_URL: str = ""
+    R2_PUBLIC_URL: str | None = None
+    USER_ME_CACHE_TTL_SECONDS: int = 60
+    AUTH_USER_CACHE_TTL_SECONDS: int = 300
 
     @model_validator(mode="after")
     def set_r2_endpoint(self) -> "Settings":
@@ -32,7 +40,6 @@ class Settings(BaseSettings):
             self.R2_ENDPOINT = f"https://{self.R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
         return self
 
-    # 'extra="ignore"' evita el error de "Extra inputs are not permitted"
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 

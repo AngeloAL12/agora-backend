@@ -1,11 +1,11 @@
 meta {
   name: Join a club
   type: http
-  seq: 6
+  seq: 7
 }
 
 post {
-  url: /clubs/{{club_id}}/members
+  url: {{base_url}}/clubs/{{club_id}}/members
   body: none
   auth: bearer
 }

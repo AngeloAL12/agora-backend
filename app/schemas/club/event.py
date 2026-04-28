@@ -2,15 +2,20 @@ from datetime import UTC, datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.schemas.club.user import UserOut
+
+class AuthorOut(BaseModel):
+    id: int
+    name: str
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class EventBase(BaseModel):
     title: str = Field(..., min_length=3, max_length=150)
-    description: str | None = Field(default=None, max_length=500)
+    description: str = Field(..., max_length=500)
     date: datetime
-    latitude: float | None = Field(default=None, ge=-90, le=90)
-    longitude: float | None = Field(default=None, ge=-180, le=180)
+    latitude: float = Field(..., ge=-90, le=90)
+    longitude: float = Field(..., ge=-180, le=180)
 
 
 class EventCreate(EventBase):
@@ -51,6 +56,6 @@ class EventResponse(BaseModel):
     latitude: float | None
     longitude: float | None
     created_at: datetime
-    author: UserOut
+    author: AuthorOut
 
     model_config = ConfigDict(from_attributes=True)

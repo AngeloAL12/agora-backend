@@ -105,6 +105,37 @@ async def test_upload_file_raises_http_exception_on_client_error(
 
 
 # ---------------------------------------------------------------------------
+# delete_file
+# ---------------------------------------------------------------------------
+
+
+async def test_delete_file_calls_delete_object(service, mock_s3_client):
+    cm, client = mock_s3_client
+    client.delete_object = AsyncMock(return_value=None)
+
+    with patch.object(service._session, "client", return_value=cm):
+        await service.delete_file("private-bucket", "complaints/1/evidence/file.png")
+
+    client.delete_object.assert_awaited_once_with(
+        Bucket="private-bucket", Key="complaints/1/evidence/file.png"
+    )
+
+
+async def test_delete_file_raises_http_exception_on_client_error(
+    service, mock_s3_client
+):
+    cm, client = mock_s3_client
+    client.delete_object = AsyncMock(side_effect=make_client_error())
+
+    with patch.object(service._session, "client", return_value=cm):
+        with pytest.raises(HTTPException) as exc_info:
+            await service.delete_file("bucket", "key.jpg")
+
+    assert exc_info.value.status_code == 500
+    assert "eliminar" in exc_info.value.detail.lower()
+
+
+# ---------------------------------------------------------------------------
 # get_presigned_url
 # ---------------------------------------------------------------------------
 

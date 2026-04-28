@@ -12,11 +12,13 @@ def test_settings_loaded(monkeypatch):
     monkeypatch.setenv("R2_SECRET_ACCESS_KEY", "secret")
     monkeypatch.setenv("R2_BUCKET_PRIVATE", "priv-bucket")
     monkeypatch.setenv("R2_BUCKET_PUBLIC", "pub-bucket")
+    monkeypatch.delenv("REDIS_URL", raising=False)
 
-    settings = Settings()
+    settings = Settings(_env_file=None)
 
     assert settings.DATABASE_URL == "postgresql://test"
     assert settings.SECRET_KEY == "test"
+    assert settings.REDIS_URL is None
 
 
 def test_r2_endpoint_derived_from_account_id(monkeypatch):

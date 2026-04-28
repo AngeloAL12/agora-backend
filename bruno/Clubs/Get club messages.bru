@@ -1,0 +1,26 @@
+meta {
+  name: Get club messages
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{base_url}}/clubs/{{club_id}}/messages?page={{page}}&limit={{limit}}
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{auth_token}}
+}
+
+vars:pre-request {
+  club_id: 1
+  page: 1
+  limit: 50
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

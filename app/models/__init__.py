@@ -13,6 +13,7 @@ from app.models.club import (  # noqa: F401
     ClubCategory,
     ClubEvent,
     ClubMember,
+    ClubMessage,
     ClubPost,
     ClubPostComment,
     ClubPostImage,
@@ -23,4 +24,9 @@ from app.models.complaint import (  # noqa: F401
     ComplaintEvidence,
     ComplaintImage,
     ComplaintStatusHistory,
+)
+from app.models.notification import (  # noqa: F401
+    Notification,
+    NotificationCategory,
+    NotificationEventType,
 )
