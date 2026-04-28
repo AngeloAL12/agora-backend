@@ -38,6 +38,7 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(
             ["id_club"],
             ["club.id"],
+            ondelete="CASCADE",
         ),
         sa.PrimaryKeyConstraint("id"),
     )
@@ -56,6 +57,7 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(
             ["id_post"],
             ["club_post.id"],
+            ondelete="CASCADE",
         ),
         sa.ForeignKeyConstraint(
             ["id_user"],
@@ -71,6 +73,7 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(
             ["id_post"],
             ["club_post.id"],
+            ondelete="CASCADE",
         ),
         sa.PrimaryKeyConstraint("id"),
     )
@@ -81,6 +84,7 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(
             ["id_post"],
             ["club_post.id"],
+            ondelete="CASCADE",
         ),
         sa.ForeignKeyConstraint(
             ["id_user"],

@@ -41,6 +41,17 @@ def upgrade():
         ondelete="CASCADE",
     )
 
+    # club_post -> cascade
+    op.drop_constraint("club_post_id_club_fkey", "club_post", type_="foreignkey")
+    op.create_foreign_key(
+        "club_post_id_club_fkey",
+        "club_post",
+        "club",
+        ["id_club"],
+        ["id"],
+        ondelete="CASCADE",
+    )
+
 
 def downgrade():
     # revert club_event
@@ -58,6 +69,16 @@ def downgrade():
     op.create_foreign_key(
         "club_member_id_club_fkey",
         "club_member",
+        "club",
+        ["id_club"],
+        ["id"],
+    )
+
+    # revert club_post
+    op.drop_constraint("club_post_id_club_fkey", "club_post", type_="foreignkey")
+    op.create_foreign_key(
+        "club_post_id_club_fkey",
+        "club_post",
         "club",
         ["id_club"],
         ["id"],
