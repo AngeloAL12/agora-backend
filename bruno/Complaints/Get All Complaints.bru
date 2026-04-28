@@ -5,9 +5,14 @@ meta {
 }
 
 get {
-  url: {{base_url}}/complaints
+  url: {{base_url}}/complaints?limit=20&offset=0
   body: none
   auth: bearer
+}
+
+params:query {
+  limit: 20
+  offset: 0
 }
 
 auth:bearer {
