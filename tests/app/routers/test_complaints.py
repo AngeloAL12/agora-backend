@@ -354,7 +354,7 @@ def test_admin_can_access_get_all_complaints(db, clear_dependency_overrides):
     assert response.status_code == 200
 
 
-def test_get_all_complaints_pagination(db, clear_dependency_overrides):
+def test_get_all_complaints_pagination(db, clean_db, clear_dependency_overrides):
     complaint_owner = _create_user(
         db,
         RoleName.USER,
