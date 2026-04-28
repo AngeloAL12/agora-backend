@@ -5,10 +5,11 @@ from fastapi import (
     File,
     Form,
     HTTPException,
+    Query,
     UploadFile,
     status,
 )
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.config import settings
@@ -31,6 +32,7 @@ from app.models.notification.notification import (
 from app.schemas.auth.auth import CurrentUser
 from app.schemas.complaint import (
     ComplaintListItemResponse,
+    ComplaintListResponse,
     ComplaintOut,
     ComplaintResponse,
     ComplaintStatusUpdate,
@@ -292,21 +294,37 @@ async def require_staff_role(
     return current_user
 
 
-@router.get("", response_model=list[ComplaintOut])
+@router.get("", response_model=ComplaintListResponse)
 async def get_all_complaints(
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(require_staff_role),
 ):
+    total = db.execute(select(func.count()).select_from(Complaint)).scalar_one()
+
     complaints = (
         db.execute(
             select(Complaint)
             .options(selectinload(Complaint.images), selectinload(Complaint.evidences))
-            .order_by(Complaint.created_at.desc())
+            .order_by(Complaint.created_at.desc(), Complaint.id.desc())
+            .limit(limit)
+            .offset(offset)
         )
         .scalars()
         .all()
     )
-    return complaints
+
+    complaint_items = [
+        ComplaintOut.model_validate(complaint) for complaint in complaints
+    ]
+
+    return ComplaintListResponse(
+        items=complaint_items,
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.post("/{complaint_id}/evidence")
