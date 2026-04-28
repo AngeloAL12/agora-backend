@@ -1253,10 +1253,8 @@ def test_club_chat_websocket_persists_and_broadcasts(db):
 
     client = TestClient(app)
 
-    with client.websocket_connect(
-        f"/clubs/{club.id}/chat",
-        headers={"authorization": f"Bearer {token_user_1}"},
-    ) as ws_1:
+    with client.websocket_connect(f"/clubs/{club.id}/chat") as ws_1:
+        ws_1.send_json({"token": token_user_1})
         ws_1.send_json({"content": "Hola a todos!"})
         payload = ws_1.receive_json()
 
@@ -1279,9 +1277,8 @@ def test_club_chat_websocket_invalid_token_closes_4001(db):
     client = TestClient(app)
 
     with pytest.raises(WebSocketDisconnect) as exc_info:
-        with client.websocket_connect(
-            f"/clubs/{club.id}/chat", headers={"authorization": "Bearer invalido"}
-        ) as ws:
+        with client.websocket_connect(f"/clubs/{club.id}/chat") as ws:
+            ws.send_json({"token": "invalido"})
             ws.receive_json()
 
     assert exc_info.value.code == 4001
@@ -1295,10 +1292,8 @@ def test_club_chat_websocket_non_member_closes_4003(db):
     client = TestClient(app)
 
     with pytest.raises(WebSocketDisconnect) as exc_info:
-        with client.websocket_connect(
-            f"/clubs/{club.id}/chat",
-            headers={"authorization": f"Bearer {token_user_3}"},
-        ) as ws:
+        with client.websocket_connect(f"/clubs/{club.id}/chat") as ws:
+            ws.send_json({"token": token_user_3})
             ws.receive_json()
 
     assert exc_info.value.code == 4003
@@ -1312,6 +1307,7 @@ def test_club_chat_websocket_no_auth_header_closes_4001(db):
 
     with pytest.raises(WebSocketDisconnect) as exc_info:
         with client.websocket_connect(f"/clubs/{club.id}/chat") as ws:
+            ws.send_json({"token": ""})
             ws.receive_json()
 
     assert exc_info.value.code == 4001
@@ -1330,26 +1326,23 @@ def test_club_chat_websocket_wrong_token_type_closes_4001(db, monkeypatch):
     client = TestClient(app)
 
     with pytest.raises(WebSocketDisconnect) as exc_info:
-        with client.websocket_connect(
-            f"/clubs/{club.id}/chat",
-            headers={"authorization": f"Bearer {refresh_token}"},
-        ) as ws:
+        with client.websocket_connect(f"/clubs/{club.id}/chat") as ws:
+            ws.send_json({"token": refresh_token})
             ws.receive_json()
 
     assert exc_info.value.code == 4001
 
 
 def test_club_chat_websocket_missing_bearer_header_closes_4001(db):
+    """Now covered by no_auth test — token omitted in first frame closes 4001."""
     category = create_category(db)
     club = create_club(db, category.id, leader_id=1)
-    token_user_1 = create_access_token({"sub": "1"})
 
     client = TestClient(app)
 
     with pytest.raises(WebSocketDisconnect) as exc_info:
-        with client.websocket_connect(
-            f"/clubs/{club.id}/chat", headers={"authorization": token_user_1}
-        ) as ws:
+        with client.websocket_connect(f"/clubs/{club.id}/chat") as ws:
+            ws.send_json({"token": ""})
             ws.receive_json()
 
     assert exc_info.value.code == 4001
@@ -1483,9 +1476,8 @@ def test_club_chat_websocket_validation_error_returns_detail(db):
 
     client = TestClient(app)
 
-    with client.websocket_connect(
-        f"/clubs/{club.id}/chat", headers={"authorization": f"Bearer {token_user_1}"}
-    ) as ws:
+    with client.websocket_connect(f"/clubs/{club.id}/chat") as ws:
+        ws.send_json({"token": token_user_1})
         ws.send_json({})
         payload = ws.receive_json()
 
@@ -1614,10 +1606,8 @@ def test_websocket_invalid_token_closes(db):
     client = TestClient(app)
 
     with pytest.raises(WebSocketDisconnect) as exc_info:
-        with client.websocket_connect(
-            f"/clubs/{club.id}/chat",
-            headers={"authorization": "Bearer invalid-token"},
-        ) as ws:
+        with client.websocket_connect(f"/clubs/{club.id}/chat") as ws:
+            ws.send_json({"token": "invalid-token"})
             ws.receive_json()
     assert exc_info.value.code == 4001
 
@@ -1632,10 +1622,8 @@ def test_websocket_non_member_closes(db):
     client = TestClient(app)
 
     with pytest.raises(WebSocketDisconnect) as exc_info:
-        with client.websocket_connect(
-            f"/clubs/{club.id}/chat",
-            headers={"authorization": f"Bearer {token_user_2}"},
-        ) as ws:
+        with client.websocket_connect(f"/clubs/{club.id}/chat") as ws:
+            ws.send_json({"token": token_user_2})
             ws.receive_json()
     assert exc_info.value.code == 4003
 
@@ -1691,9 +1679,8 @@ def test_club_chat_websocket_whitespace_only_message_rejected(db):
 
     client = TestClient(app)
 
-    with client.websocket_connect(
-        f"/clubs/{club.id}/chat", headers={"authorization": f"Bearer {token_user_1}"}
-    ) as ws:
+    with client.websocket_connect(f"/clubs/{club.id}/chat") as ws:
+        ws.send_json({"token": token_user_1})
         ws.send_json({"content": "   \t\n  "})
         payload = ws.receive_json()
 
@@ -1898,9 +1885,8 @@ def test_club_chat_websocket_sender_error_handling(db, monkeypatch):
 
     client = TestClient(app)
 
-    with client.websocket_connect(
-        f"/clubs/{club.id}/chat", headers={"authorization": f"Bearer {token_user_1}"}
-    ) as ws:
+    with client.websocket_connect(f"/clubs/{club.id}/chat") as ws:
+        ws.send_json({"token": token_user_1})
         # This should trigger error handling but not close the connection immediately
         ws.send_json({"content": "Test message"})
         # Wait for response - should send error JSON

@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from typing import Annotated, Any
 
@@ -425,8 +426,8 @@ async def club_chat(
 ):
     """WebSocket endpoint para chat en club.
 
-    Autenticación: Bearer token en header Authorization.
-    Requiere token con claim type 'access'.
+    Autenticación: first-message auth. El primer frame debe ser
+    { "token": "<access_token>" }. Requiere claim type 'access'.
     """
     user_id: int | None = None
     ws_callback: Any = None
@@ -434,25 +435,29 @@ async def club_chat(
 
     await websocket.accept()
 
+    # First-message auth: esperar frame con token (max 5s)
+    try:
+        auth_frame = await asyncio.wait_for(websocket.receive_json(), timeout=5.0)
+    except (TimeoutError, Exception):
+        await websocket.close(code=4001, reason="Auth timeout")
+        return
+
+    token = auth_frame.get("token", "") if isinstance(auth_frame, dict) else ""
+    headers = {"authorization": f"Bearer {token}"}
+
     result = await run_in_threadpool(
         _authenticate_ws_user_for_club,
-        dict(websocket.headers),
+        headers,
         club_id,
         db,
     )
 
     if result is None:
-        auth_header = dict(websocket.headers).get("authorization", "")
-        if not auth_header.startswith("Bearer "):
+        user_check = await run_in_threadpool(_authenticate_ws_user, headers, db)
+        if user_check is None:
             await websocket.close(code=4001, reason="Invalid authentication")
         else:
-            user_check = await run_in_threadpool(
-                _authenticate_ws_user, dict(websocket.headers), db
-            )
-            if user_check is None:
-                await websocket.close(code=4001, reason="Invalid authentication")
-            else:
-                await websocket.close(code=4003, reason="Not a club member")
+            await websocket.close(code=4003, reason="Not a club member")
         return
 
     user, club = result
