@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     ENV: str = "development"
     R2_BUCKET_PRIVATE: str
     R2_BUCKET_PUBLIC: str
+    R2_PUBLIC_URL: str = ""
 
     @model_validator(mode="after")
     def set_r2_endpoint(self) -> "Settings":

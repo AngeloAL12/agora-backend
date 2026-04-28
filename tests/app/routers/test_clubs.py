@@ -586,8 +586,6 @@ def test_transfer_leadership_same_leader_rejected(db, clear_dependency_overrides
 
 
 def create_event(db, club_id, author_id, title="Evento Test", future=True):
-    from datetime import datetime, timedelta
-
     ensure_user(db, author_id)
     from app.models.club.event import ClubEvent
 
@@ -658,8 +656,6 @@ def test_create_event_as_leader(db, clear_dependency_overrides):
 
     category = create_category(db)
     club = create_club(db, category.id, leader_id=1)
-
-    from datetime import datetime, timedelta
 
     client = TestClient(app)
     response = client.post(
@@ -860,10 +856,8 @@ def test_create_club_post(db, clear_dependency_overrides):
     client = TestClient(app)
     response = client.post(
         f"/clubs/{club.id}/posts",
-        json={
-            "content": "Nueva publicación",
-            "images": ["https://example.com/img1.jpg"],
-        },
+        data={"content": "Nueva publicación"},
+        files=[("images", ("img1.jpg", b"fake-image-bytes", "image/jpeg"))],
     )
 
     assert response.status_code == 201
@@ -898,7 +892,7 @@ def test_create_post_non_member_forbidden(db, clear_dependency_overrides):
     client = TestClient(app)
     response = client.post(
         f"/clubs/{club.id}/posts",
-        json={"content": "Hola", "images": []},
+        data={"content": "Hola"},
     )
 
     assert response.status_code == 403
@@ -915,7 +909,7 @@ def test_delete_post_not_author_forbidden(db, clear_dependency_overrides):
 
     res = client.post(
         f"/clubs/{club.id}/posts",
-        json={"content": "Post", "images": []},
+        data={"content": "Post"},
     )
     post_id = res.json()["id"]
 
@@ -937,7 +931,7 @@ def test_create_post_comment(db, clear_dependency_overrides):
 
     res = client.post(
         f"/clubs/{club.id}/posts",
-        json={"content": "Post", "images": []},
+        data={"content": "Post"},
     )
     post_id = res.json()["id"]
 
@@ -960,13 +954,13 @@ def test_like_post(db, clear_dependency_overrides):
 
     post_response = client.post(
         f"/clubs/{club.id}/posts",
-        json={"content": "Post con like", "images": []},
+        data={"content": "Post con like"},
     )
     post_id = post_response.json()["id"]
 
     response = client.post(f"/clubs/{club.id}/posts/{post_id}/like")
 
-    assert response.status_code == 200
+    assert response.status_code == 201
     data = response.json()
     assert data["id_post"] == post_id
     assert data["id_user"] == 1
@@ -993,7 +987,7 @@ def test_unlike_post(db, clear_dependency_overrides):
 
     post_response = client.post(
         f"/clubs/{club.id}/posts",
-        json={"content": "Post con unlike", "images": []},
+        data={"content": "Post con unlike"},
     )
     post_id = post_response.json()["id"]
 
@@ -1028,7 +1022,7 @@ def test_get_post_comments(db, clear_dependency_overrides):
 
     post_response = client.post(
         f"/clubs/{club.id}/posts",
-        json={"content": "Post con comentarios", "images": []},
+        data={"content": "Post con comentarios"},
     )
     post_id = post_response.json()["id"]
 
@@ -1057,7 +1051,7 @@ def test_delete_post_comment(db, clear_dependency_overrides):
 
     post_response = client.post(
         f"/clubs/{club.id}/posts",
-        json={"content": "Post con comentario", "images": []},
+        data={"content": "Post con comentario"},
     )
     post_id = post_response.json()["id"]
 

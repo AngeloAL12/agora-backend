@@ -1,14 +1,21 @@
-from fastapi import HTTPException
+from fastapi import HTTPException, UploadFile
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.models.club.club import Club
 from app.models.club.club_member import ClubMember
 from app.models.club.post import ClubPost
 from app.models.club.post_comment import ClubPostComment
 from app.models.club.post_image import ClubPostImage
 from app.models.club.post_like import ClubPostLike
+from app.services.storage_service import storage_service
+
+
+def _public_url(object_key: str) -> str:
+    base = settings.R2_PUBLIC_URL.rstrip("/")
+    return f"{base}/{object_key}"
 
 
 def verify_membership(
@@ -64,38 +71,47 @@ def get_club_posts_service(
         .all()
     )
 
+    if not posts:
+        return []
+
+    post_ids = [p.id for p in posts]
+
+    like_counts = dict(
+        db.query(ClubPostLike.id_post, func.count(ClubPostLike.id_user))
+        .filter(ClubPostLike.id_post.in_(post_ids))
+        .group_by(ClubPostLike.id_post)
+        .all()
+    )
+
+    liked_set = {
+        row[0]
+        for row in db.query(ClubPostLike.id_post)
+        .filter(ClubPostLike.id_post.in_(post_ids), ClubPostLike.id_user == user_id)
+        .all()
+    }
+
+    comment_counts = dict(
+        db.query(ClubPostComment.id_post, func.count(ClubPostComment.id))
+        .filter(ClubPostComment.id_post.in_(post_ids))
+        .group_by(ClubPostComment.id_post)
+        .all()
+    )
+
     result = []
 
     for post in posts:
-        like_count = (
-            db.query(func.count(ClubPostLike.id_user))
-            .filter(ClubPostLike.id_post == post.id)
-            .scalar()
-        ) or 0
-
-        user_has_liked = (
-            db.query(ClubPostLike)
-            .filter(
-                ClubPostLike.id_post == post.id,
-                ClubPostLike.id_user == user_id,
-            )
-            .first()
-        ) is not None
-
-        comment_count = (
-            db.query(func.count(ClubPostComment.id))
-            .filter(ClubPostComment.id_post == post.id)
-            .scalar()
-        ) or 0
+        image_urls = [
+            {"id": img.id, "url": _public_url(img.url)} for img in post.images
+        ]
 
         result.append(
             {
                 "id": post.id,
                 "id_club": post.id_club,
                 "content": post.content,
-                "like_count": like_count,
-                "user_has_liked": user_has_liked,
-                "comment_count": comment_count,
+                "like_count": like_counts.get(post.id, 0),
+                "user_has_liked": post.id in liked_set,
+                "comment_count": comment_counts.get(post.id, 0),
                 "comments_preview": [
                     {
                         "id": comment.id,
@@ -109,7 +125,7 @@ def get_club_posts_service(
                     }
                     for comment in post.comments[:3]
                 ],
-                "images": [{"id": img.id, "url": img.url} for img in post.images],
+                "images": image_urls,
                 "author": {
                     "id": post.author.id,
                     "name": post.author.name,
@@ -122,12 +138,12 @@ def get_club_posts_service(
     return result
 
 
-def create_club_post_service(
+async def create_club_post_service(
     db: Session,
     club: Club,
     user_id: int,
     content: str,
-    images: list,
+    images: list[UploadFile],
 ):
     verify_membership(db, club, user_id, require_leader=False)
 
@@ -141,8 +157,11 @@ def create_club_post_service(
         db.add(post)
         db.flush()
 
-        for url in images:
-            db.add(ClubPostImage(url=str(url), id_post=post.id))
+        for file in images:
+            object_key = await storage_service.upload_file(
+                file, settings.R2_BUCKET_PUBLIC, f"clubs/{club.id}/posts"
+            )
+            db.add(ClubPostImage(url=object_key, id_post=post.id))
 
         db.commit()
         db.refresh(post)
@@ -153,6 +172,8 @@ def create_club_post_service(
             detail="Error al crear la publicación",
         ) from err
 
+    image_urls = [{"id": img.id, "url": _public_url(img.url)} for img in post.images]
+
     return {
         "id": post.id,
         "id_club": post.id_club,
@@ -161,7 +182,7 @@ def create_club_post_service(
         "user_has_liked": False,
         "comment_count": 0,
         "comments_preview": [],
-        "images": [{"id": img.id, "url": img.url} for img in post.images],
+        "images": image_urls,
         "author": {
             "id": post.author.id,
             "name": post.author.name,
