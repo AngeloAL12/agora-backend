@@ -1,4 +1,3 @@
-import asyncio
 import logging
 from typing import Annotated, Any
 
@@ -435,11 +434,14 @@ async def club_chat(
 
     await websocket.accept()
 
-    # First-message auth: esperar frame con token (max 5s)
+    # First-message auth: primer frame debe ser { "token": "<jwt>" }
     try:
-        auth_frame = await asyncio.wait_for(websocket.receive_json(), timeout=5.0)
-    except (TimeoutError, Exception):
-        await websocket.close(code=4001, reason="Auth timeout")
+        auth_frame = await websocket.receive_json()
+    except WebSocketDisconnect:
+        return
+    except Exception as e:
+        logger.warning(f"WS club {club_id}: auth frame error: {e}")
+        await websocket.close(code=4001, reason="Invalid auth frame")
         return
 
     token = auth_frame.get("token", "") if isinstance(auth_frame, dict) else ""
@@ -455,10 +457,14 @@ async def club_chat(
     if result is None:
         user_check = await run_in_threadpool(_authenticate_ws_user, headers, db)
         if user_check is None:
+            logger.warning(f"WS club {club_id}: invalid token")
             await websocket.close(code=4001, reason="Invalid authentication")
         else:
+            logger.warning(f"WS club {club_id}: not a member")
             await websocket.close(code=4003, reason="Not a club member")
         return
+
+    logger.info(f"WS club {club_id}: user {result[0].id} authenticated")
 
     user, club = result
     user_id = user.id
