@@ -35,6 +35,7 @@ from app.schemas.complaint import (
     ComplaintListResponse,
     ComplaintOut,
     ComplaintResponse,
+    ComplaintStats,
     ComplaintStatusUpdate,
     ComplaintUpdate,
 )
@@ -301,7 +302,12 @@ async def get_all_complaints(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(require_staff_role),
 ):
-    total = db.execute(select(func.count()).select_from(Complaint)).scalar_one()
+    stats_rows = db.execute(
+        select(Complaint.status, func.count().label("cnt")).group_by(Complaint.status)
+    ).all()
+
+    stats_map: dict[str, int] = {row.status.value: row.cnt for row in stats_rows}
+    total = sum(stats_map.values())
 
     rows = (
         db.execute(
@@ -322,6 +328,12 @@ async def get_all_complaints(
         total=total,
         limit=limit,
         offset=offset,
+        stats=ComplaintStats(
+            total=total,
+            pending=stats_map.get(ComplaintStatus.PENDING.value, 0),
+            in_progress=stats_map.get(ComplaintStatus.IN_PROGRESS.value, 0),
+            resolved=stats_map.get(ComplaintStatus.RESOLVED.value, 0),
+        ),
     )
 
 

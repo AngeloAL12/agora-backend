@@ -57,11 +57,19 @@ class ComplaintListItemResponse(BaseModel):
 ComplaintOut = ComplaintListItemResponse
 
 
+class ComplaintStats(BaseModel):
+    total: int
+    pending: int
+    in_progress: int
+    resolved: int
+
+
 class ComplaintListResponse(BaseModel):
     items: list[ComplaintOut]
     total: int
     limit: int
     offset: int
+    stats: ComplaintStats
 
 
 class ComplaintStatusUpdate(BaseModel):
