@@ -12,6 +12,7 @@ from app.models.club import (  # noqa: F401
     Club,
     ClubCategory,
     ClubEvent,
+    ClubJoinRequest,
     ClubMember,
     ClubMessage,
     ClubPost,

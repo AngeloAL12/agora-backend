@@ -1,6 +1,6 @@
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, ForeignKey, String, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -8,6 +8,7 @@ from app.core.database import Base
 if TYPE_CHECKING:
     from app.models.auth.user import User
     from app.models.club.club_category import ClubCategory
+    from app.models.club.club_join_request import ClubJoinRequest
     from app.models.club.club_member import ClubMember
     from app.models.club.message import ClubMessage
 
@@ -26,6 +27,9 @@ class Club(Base):
         ForeignKey("club_category.id"), nullable=False
     )
     id_leader: Mapped[int] = mapped_column(ForeignKey("user.id"), nullable=False)
+    is_private: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
     created_at: Mapped[DateTime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -36,3 +40,6 @@ class Club(Base):
         back_populates="club", passive_deletes=True
     )
     messages: Mapped[list["ClubMessage"]] = relationship(back_populates="club")
+    join_requests: Mapped[list["ClubJoinRequest"]] = relationship(
+        back_populates="club", passive_deletes=True
+    )
