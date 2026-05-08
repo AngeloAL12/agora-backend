@@ -275,7 +275,8 @@ async def get_my_complaint_detail(
             detail="Queja no encontrada",
         )
 
-    if complaint.id_user != current_user.id:
+    is_staff_or_admin = current_user.role in {RoleName.STAFF, RoleName.ADMIN}
+    if complaint.id_user != current_user.id and not is_staff_or_admin:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="No tienes acceso a esta queja",
