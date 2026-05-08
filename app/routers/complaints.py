@@ -51,15 +51,6 @@ _ALLOWED_TRANSITIONS: dict[ComplaintStatus, set[ComplaintStatus]] = {
 }
 
 
-def _ensure_content_type(request: Request, expected_prefix: str) -> None:
-    content_type = request.headers.get("content-type", "")
-    if not content_type.lower().startswith(expected_prefix):
-        raise HTTPException(
-            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail=f"Content-Type inválido. Se esperaba {expected_prefix}.",
-        )
-
-
 def _ensure_any_content_type(
     request: Request, expected_prefixes: tuple[str, ...]
 ) -> None:
@@ -75,7 +66,7 @@ def _ensure_any_content_type(
 
 
 def _require_multipart_content_type(request: Request) -> None:
-    _ensure_content_type(request, "multipart/form-data")
+    _ensure_any_content_type(request, ("multipart/form-data",))
 
 
 def _require_complaint_create_content_type(request: Request) -> None:
@@ -90,7 +81,10 @@ def _validate_status_transition(
     new_status: ComplaintStatus,
 ) -> None:
     if new_status == current_status:
-        return
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"La queja ya se encuentra en estado {current_status.value}.",
+        )
 
     if current_status in _FINAL_STATUSES:
         raise HTTPException(
