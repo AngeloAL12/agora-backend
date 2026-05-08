@@ -6,6 +6,7 @@ from fastapi import (
     Form,
     HTTPException,
     Query,
+    Request,
     UploadFile,
     status,
 )
@@ -42,6 +43,73 @@ from app.schemas.complaint import (
 from app.services.storage_service import storage_service
 
 router = APIRouter(prefix="/complaints", tags=["complaints"])
+
+_FINAL_STATUSES = {ComplaintStatus.RESOLVED, ComplaintStatus.REJECTED}
+_ALLOWED_TRANSITIONS: dict[ComplaintStatus, set[ComplaintStatus]] = {
+    ComplaintStatus.PENDING: {ComplaintStatus.IN_PROGRESS, ComplaintStatus.REJECTED},
+    ComplaintStatus.IN_PROGRESS: {ComplaintStatus.RESOLVED, ComplaintStatus.REJECTED},
+}
+
+
+def _ensure_content_type(request: Request, expected_prefix: str) -> None:
+    content_type = request.headers.get("content-type", "")
+    if not content_type.lower().startswith(expected_prefix):
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail=f"Content-Type inválido. Se esperaba {expected_prefix}.",
+        )
+
+
+def _ensure_any_content_type(
+    request: Request, expected_prefixes: tuple[str, ...]
+) -> None:
+    content_type = request.headers.get("content-type", "").lower()
+    if any(content_type.startswith(prefix) for prefix in expected_prefixes):
+        return
+
+    expected = " o ".join(expected_prefixes)
+    raise HTTPException(
+        status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+        detail=f"Content-Type inválido. Se esperaba {expected}.",
+    )
+
+
+def _require_multipart_content_type(request: Request) -> None:
+    _ensure_content_type(request, "multipart/form-data")
+
+
+def _require_complaint_create_content_type(request: Request) -> None:
+    _ensure_any_content_type(
+        request,
+        ("multipart/form-data", "application/x-www-form-urlencoded"),
+    )
+
+
+def _validate_status_transition(
+    current_status: ComplaintStatus,
+    new_status: ComplaintStatus,
+) -> None:
+    if new_status == current_status:
+        return
+
+    if current_status in _FINAL_STATUSES:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "No se puede cambiar el estado de una queja finalizada "
+                f"({current_status.value})."
+            ),
+        )
+
+    allowed_next = _ALLOWED_TRANSITIONS.get(current_status, set())
+    if new_status not in allowed_next:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"Transición de estado inválida: {current_status.value} -> "
+                f"{new_status.value}."
+            ),
+        )
 
 
 def _notify_complaint_submitted(
@@ -126,6 +194,19 @@ async def _serialize_complaint(complaint: Complaint) -> ComplaintResponse:
             }
         )
 
+    evidence_responses = []
+    for evidence in complaint.evidences:
+        evidence_responses.append(
+            {
+                "id": evidence.id,
+                "url": await storage_service.get_presigned_url(
+                    settings.R2_BUCKET_PRIVATE,
+                    evidence.url,
+                ),
+                "created_at": evidence.created_at,
+            }
+        )
+
     return ComplaintResponse(
         id=complaint.id,
         type=complaint.type,
@@ -138,6 +219,7 @@ async def _serialize_complaint(complaint: Complaint) -> ComplaintResponse:
         has_appealed=complaint.has_appealed,
         created_at=complaint.created_at,
         images=image_responses,
+        evidences=evidence_responses,
     )
 
 
@@ -145,6 +227,7 @@ async def _serialize_complaint(complaint: Complaint) -> ComplaintResponse:
     "",
     response_model=ComplaintResponse,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(_require_complaint_create_content_type)],
 )
 async def create_complaint(
     background_tasks: BackgroundTasks,
@@ -223,7 +306,7 @@ async def create_complaint(
 
     complaint = db.execute(
         select(Complaint)
-        .options(selectinload(Complaint.images))
+        .options(selectinload(Complaint.images), selectinload(Complaint.evidences))
         .where(Complaint.id == complaint.id)
     ).scalar_one()
 
@@ -265,7 +348,7 @@ async def get_my_complaint_detail(
 ):
     complaint = db.execute(
         select(Complaint)
-        .options(selectinload(Complaint.images))
+        .options(selectinload(Complaint.images), selectinload(Complaint.evidences))
         .where(Complaint.id == complaint_id)
     ).scalar_one_or_none()
 
@@ -337,7 +420,10 @@ async def get_all_complaints(
     )
 
 
-@router.post("/{complaint_id}/evidence")
+@router.post(
+    "/{complaint_id}/evidence",
+    dependencies=[Depends(_require_multipart_content_type)],
+)
 async def upload_complaint_evidence(
     complaint_id: int,
     file: UploadFile = File(...),
@@ -392,6 +478,8 @@ async def update_complaint_status(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Queja no encontrada",
         )
+
+    _validate_status_transition(complaint.status, status_update.status)
 
     if status_update.status == ComplaintStatus.RESOLVED:
         if not complaint.evidences:
@@ -465,7 +553,7 @@ async def update_complaint(
 ):
     complaint = db.execute(
         select(Complaint)
-        .options(selectinload(Complaint.images))
+        .options(selectinload(Complaint.images), selectinload(Complaint.evidences))
         .where(Complaint.id == complaint_id)
     ).scalar_one_or_none()
 

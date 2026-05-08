@@ -315,7 +315,9 @@ def test_status_update_to_pending_does_not_schedule_notification(
     )
 
     client = TestClient(app)
-    client.patch(f"/complaints/{complaint.id}/status", json={"status": "PENDING"})
+    response = client.patch(
+        f"/complaints/{complaint.id}/status", json={"status": "PENDING"}
+    )
 
-    assert len(calls) == 1
-    assert calls[0] == ComplaintStatus.PENDING
+    assert response.status_code == 409
+    assert not calls

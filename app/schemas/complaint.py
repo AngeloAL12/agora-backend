@@ -27,6 +27,14 @@ class ComplaintImageResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class ComplaintEvidenceResponse(BaseModel):
+    id: int
+    url: str
+    created_at: datetime | Any = Field(..., description="Creation timestamp")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class ComplaintResponse(BaseModel):
     id: int
     type: ComplaintType
@@ -39,6 +47,7 @@ class ComplaintResponse(BaseModel):
     has_appealed: bool
     created_at: datetime | Any = Field(..., description="Creation timestamp")
     images: list[ComplaintImageResponse]
+    evidences: list[ComplaintEvidenceResponse]
 
     model_config = ConfigDict(from_attributes=True)
 

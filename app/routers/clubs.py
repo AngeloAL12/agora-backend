@@ -357,7 +357,7 @@ def get_my_clubs(
     membership_subq = (
         db.query(ClubMember.id_club)
         .filter(ClubMember.id_user == current_user.id)
-        .subquery()
+        .scalar_subquery()
     )
     rows = (
         db.query(Club, func.count(ClubMember.id).label("members_count"))
