@@ -658,7 +658,7 @@ def test_join_leave_flow(db):
     app.dependency_overrides[get_current_user] = override_user(2)
     client = TestClient(app)
 
-    assert client.post(f"/clubs/{club.id}/members").status_code == 200
+    assert client.post(f"/clubs/{club.id}/members").status_code == 201
     assert client.delete(f"/clubs/{club.id}/members/me").status_code == 200
 
 

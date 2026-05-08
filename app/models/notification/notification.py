@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 
 class NotificationCategory(StrEnum):
     REPORTS = "REPORTS"
-    # TODO: CLUBS = "CLUBS"
+    CLUBS = "CLUBS"
 
 
 class NotificationEventType(StrEnum):
@@ -21,6 +21,9 @@ class NotificationEventType(StrEnum):
     COMPLAINT_IN_PROGRESS = "COMPLAINT_IN_PROGRESS"
     COMPLAINT_RESOLVED = "COMPLAINT_RESOLVED"
     COMPLAINT_REJECTED = "COMPLAINT_REJECTED"
+    CLUB_JOIN_REQUEST = "CLUB_JOIN_REQUEST"
+    CLUB_JOIN_ACCEPTED = "CLUB_JOIN_ACCEPTED"
+    CLUB_JOIN_REJECTED = "CLUB_JOIN_REJECTED"
 
 
 class Notification(Base):
@@ -40,6 +43,7 @@ class Notification(Base):
     body: Mapped[str] = mapped_column(Text, nullable=False)
     is_read: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     reference_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    extra_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[DateTime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
