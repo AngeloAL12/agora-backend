@@ -14,6 +14,7 @@ from app.models.auth.user import User
 from app.models.auth.user_session import UserSession
 from app.models.club.club import Club
 from app.models.club.club_category import ClubCategory
+from app.models.club.club_join_request import ClubJoinRequest, JoinRequestStatus
 from app.models.club.club_member import ClubMember
 from app.models.club.message import ClubMessage
 from app.models.club.post_comment import ClubPostComment
@@ -2261,3 +2262,210 @@ def test_list_events_non_member_forbidden(db, clear_dependency_overrides):
     response = client.get(f"/clubs/{club.id}/events")
 
     assert response.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# Join-request tests
+# ---------------------------------------------------------------------------
+
+
+def _create_private_club(db, category_id, leader_id=1):
+    club = create_club(db, category_id, leader_id=leader_id)
+    club.is_private = True
+    db.commit()
+    return club
+
+
+def _seed_join_request(db, club_id, user_id) -> ClubJoinRequest:
+    req = ClubJoinRequest(
+        id_club=club_id,
+        id_user=user_id,
+        status=JoinRequestStatus.PENDING,
+    )
+    db.add(req)
+    db.commit()
+    db.refresh(req)
+    return req
+
+
+def test_join_private_club_creates_request(db):
+    category = create_category(db)
+    club = _create_private_club(db, category.id, leader_id=1)
+
+    app.dependency_overrides[get_current_user] = override_user(2)
+    client = TestClient(app)
+
+    response = client.post(f"/clubs/{club.id}/members")
+
+    assert response.status_code == 202
+    body = response.json()
+    assert "request_id" in body
+
+    request_in_db = (
+        db.query(ClubJoinRequest)
+        .filter(ClubJoinRequest.id == body["request_id"])
+        .first()
+    )
+    assert request_in_db is not None
+    assert request_in_db.status == JoinRequestStatus.PENDING
+    assert request_in_db.id_user == 2
+
+
+def test_join_private_club_duplicate_request(db):
+    category = create_category(db)
+    club = _create_private_club(db, category.id, leader_id=1)
+    _seed_join_request(db, club.id, 2)
+
+    app.dependency_overrides[get_current_user] = override_user(2)
+    client = TestClient(app)
+
+    response = client.post(f"/clubs/{club.id}/members")
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Ya tienes una solicitud pendiente"
+
+
+def test_join_private_club_already_member(db):
+    category = create_category(db)
+    club = _create_private_club(db, category.id, leader_id=1)
+    create_membership(db, club.id, 2)
+
+    app.dependency_overrides[get_current_user] = override_user(2)
+    client = TestClient(app)
+
+    response = client.post(f"/clubs/{club.id}/members")
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Ya eres miembro del club"
+
+
+def test_get_join_requests_leader(db):
+    category = create_category(db)
+    club = _create_private_club(db, category.id, leader_id=1)
+    _seed_join_request(db, club.id, 2)
+    _seed_join_request(db, club.id, 3)
+
+    app.dependency_overrides[get_current_user] = override_user(1)
+    client = TestClient(app)
+
+    response = client.get(f"/clubs/{club.id}/join-requests")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 2
+    assert all("user" in item for item in data)
+
+
+def test_get_join_requests_non_leader(db):
+    category = create_category(db)
+    club = _create_private_club(db, category.id, leader_id=1)
+
+    app.dependency_overrides[get_current_user] = override_user(2)
+    client = TestClient(app)
+
+    response = client.get(f"/clubs/{club.id}/join-requests")
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Solo el líder puede ver las solicitudes"
+
+
+def test_accept_join_request(db):
+    category = create_category(db)
+    club = _create_private_club(db, category.id, leader_id=1)
+    req = _seed_join_request(db, club.id, 2)
+
+    app.dependency_overrides[get_current_user] = override_user(1)
+    client = TestClient(app)
+
+    response = client.patch(
+        f"/clubs/{club.id}/join-requests/{req.id}",
+        json={"action": "ACCEPT"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "ACCEPTED"
+
+    member = (
+        db.query(ClubMember)
+        .filter(ClubMember.id_club == club.id, ClubMember.id_user == 2)
+        .first()
+    )
+    assert member is not None
+
+
+def test_reject_join_request(db):
+    category = create_category(db)
+    club = _create_private_club(db, category.id, leader_id=1)
+    req = _seed_join_request(db, club.id, 2)
+
+    app.dependency_overrides[get_current_user] = override_user(1)
+    client = TestClient(app)
+
+    response = client.patch(
+        f"/clubs/{club.id}/join-requests/{req.id}",
+        json={"action": "REJECT"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "REJECTED"
+
+    member = (
+        db.query(ClubMember)
+        .filter(ClubMember.id_club == club.id, ClubMember.id_user == 2)
+        .first()
+    )
+    assert member is None
+
+
+def test_resolve_already_resolved_request(db):
+    category = create_category(db)
+    club = _create_private_club(db, category.id, leader_id=1)
+    req = _seed_join_request(db, club.id, 2)
+
+    app.dependency_overrides[get_current_user] = override_user(1)
+    client = TestClient(app)
+
+    client.patch(
+        f"/clubs/{club.id}/join-requests/{req.id}",
+        json={"action": "ACCEPT"},
+    )
+    response = client.patch(
+        f"/clubs/{club.id}/join-requests/{req.id}",
+        json={"action": "ACCEPT"},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "La solicitud ya fue resuelta"
+
+
+def test_resolve_request_non_leader(db):
+    category = create_category(db)
+    club = _create_private_club(db, category.id, leader_id=1)
+    req = _seed_join_request(db, club.id, 3)
+
+    app.dependency_overrides[get_current_user] = override_user(2)
+    client = TestClient(app)
+
+    response = client.patch(
+        f"/clubs/{club.id}/join-requests/{req.id}",
+        json={"action": "ACCEPT"},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Solo el líder puede resolver solicitudes"
+
+
+def test_resolve_request_not_found(db):
+    category = create_category(db)
+    club = _create_private_club(db, category.id, leader_id=1)
+
+    app.dependency_overrides[get_current_user] = override_user(1)
+    client = TestClient(app)
+
+    response = client.patch(
+        f"/clubs/{club.id}/join-requests/999999",
+        json={"action": "ACCEPT"},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Solicitud no encontrada"
