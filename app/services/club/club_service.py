@@ -16,19 +16,20 @@ from app.models.notification.notification import (
     NotificationCategory,
     NotificationEventType,
 )
+from app.schemas.club.join_request import JoinRequestAction
 from app.services.notification_service import create_notification
 from app.services.storage_service import storage_service
 
 
-def request_join_club(db: Session, club: Club, current_user: User) -> ClubJoinRequest:
+def request_join_club(db: Session, club: Club, user_id: int) -> ClubJoinRequest:
     if not club.is_private:
         raise HTTPException(
             status_code=400, detail="El club es público, únete directamente"
         )
 
-    is_member = club.id_leader == current_user.id or (
+    is_member = club.id_leader == user_id or (
         db.query(ClubMember)
-        .filter(ClubMember.id_club == club.id, ClubMember.id_user == current_user.id)
+        .filter(ClubMember.id_club == club.id, ClubMember.id_user == user_id)
         .first()
         is not None
     )
@@ -39,7 +40,7 @@ def request_join_club(db: Session, club: Club, current_user: User) -> ClubJoinRe
         db.query(ClubJoinRequest)
         .filter(
             ClubJoinRequest.id_club == club.id,
-            ClubJoinRequest.id_user == current_user.id,
+            ClubJoinRequest.id_user == user_id,
             ClubJoinRequest.status == JoinRequestStatus.PENDING,
         )
         .first()
@@ -49,18 +50,19 @@ def request_join_club(db: Session, club: Club, current_user: User) -> ClubJoinRe
 
     join_request = ClubJoinRequest(
         id_club=club.id,
-        id_user=current_user.id,
+        id_user=user_id,
         status=JoinRequestStatus.PENDING,
     )
     db.add(join_request)
     db.flush()
 
+    user = db.query(User).filter(User.id == user_id).first()
     create_notification(
         db,
         id_user=club.id_leader,
         category=NotificationCategory.CLUBS,
         event_type=NotificationEventType.CLUB_JOIN_REQUEST,
-        title=f"{current_user.name} quiere unirse a {club.name}",
+        title=f"{user.name} quiere unirse a {club.name}",
         body="Acepta o rechaza la solicitud desde notificaciones",
         reference_id=club.id,
         extra_id=join_request.id,
@@ -94,9 +96,16 @@ def resolve_join_request(
     if join_request.status != JoinRequestStatus.PENDING:
         raise HTTPException(status_code=409, detail="La solicitud ya fue resuelta")
 
-    if action == "accept":
+    if action == JoinRequestAction.ACCEPT:
         join_request.status = JoinRequestStatus.ACCEPTED
-        db.add(ClubMember(id_club=club.id, id_user=join_request.id_user))
+        try:
+            db.add(ClubMember(id_club=club.id, id_user=join_request.id_user))
+            db.flush()
+        except IntegrityError as exc:
+            db.rollback()
+            raise HTTPException(
+                status_code=409, detail="El usuario ya es miembro del club"
+            ) from exc
         create_notification(
             db,
             id_user=join_request.id_user,
@@ -106,7 +115,7 @@ def resolve_join_request(
             body="Ya eres miembro del club",
             reference_id=club.id,
         )
-    else:
+    elif action == JoinRequestAction.REJECT:
         join_request.status = JoinRequestStatus.REJECTED
         create_notification(
             db,
@@ -117,6 +126,8 @@ def resolve_join_request(
             body="El líder no aceptó tu solicitud",
             reference_id=club.id,
         )
+    else:
+        raise HTTPException(status_code=400, detail="Acción inválida")
 
     db.commit()
     db.refresh(join_request)

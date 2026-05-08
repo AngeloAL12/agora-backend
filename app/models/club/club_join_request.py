@@ -1,4 +1,4 @@
-import enum
+from enum import StrEnum
 from typing import TYPE_CHECKING
 
 from sqlalchemy import DateTime, ForeignKey, UniqueConstraint
@@ -13,10 +13,10 @@ if TYPE_CHECKING:
     from app.models.club.club import Club
 
 
-class JoinRequestStatus(enum.Enum):
-    PENDING = "pending"
-    ACCEPTED = "accepted"
-    REJECTED = "rejected"
+class JoinRequestStatus(StrEnum):
+    PENDING = "PENDING"
+    ACCEPTED = "ACCEPTED"
+    REJECTED = "REJECTED"
 
 
 class ClubJoinRequest(Base):

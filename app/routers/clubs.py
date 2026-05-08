@@ -14,6 +14,7 @@ from fastapi import (
     status,
 )
 from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -704,15 +705,12 @@ def join_club(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_current_user),
 ):
-    from fastapi.responses import JSONResponse
-
     club = db.query(Club).filter(Club.id == club_id).first()
     if not club:
         raise HTTPException(status_code=404, detail="Club no encontrado")
 
     if club.is_private:
-        user = db.query(User).filter(User.id == current_user.id).first()
-        join_request = request_join_club(db, club, user)
+        join_request = request_join_club(db, club, current_user.id)
         return JSONResponse(
             status_code=202,
             content={
