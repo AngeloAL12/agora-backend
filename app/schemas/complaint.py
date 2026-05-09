@@ -32,8 +32,6 @@ class ComplaintEvidenceResponse(BaseModel):
     url: str
     created_at: datetime | Any = Field(..., description="Creation timestamp")
 
-    model_config = ConfigDict(from_attributes=True)
-
 
 class ComplaintResponse(BaseModel):
     id: int

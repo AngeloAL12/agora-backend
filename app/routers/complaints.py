@@ -58,7 +58,10 @@ def _ensure_any_content_type(
     if any(content_type.startswith(prefix) for prefix in expected_prefixes):
         return
 
-    expected = " o ".join(expected_prefixes)
+    if len(expected_prefixes) == 1:
+        expected = expected_prefixes[0]
+    else:
+        expected = ", ".join(expected_prefixes[:-1]) + " o " + expected_prefixes[-1]
     raise HTTPException(
         status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
         detail=f"Content-Type inválido. Se esperaba {expected}.",

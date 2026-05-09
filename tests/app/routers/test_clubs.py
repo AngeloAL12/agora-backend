@@ -2391,6 +2391,28 @@ def test_create_club_post_with_image_builds_public_url(db, monkeypatch):
     assert "https://cdn.example.com" in data["images"][0]["url"]
 
 
+def test_create_club_post_with_image_no_public_url_returns_key(db, monkeypatch):
+    """_public_url falls back to bare object_key when R2_PUBLIC_URL is None."""
+    app.dependency_overrides[get_current_user] = override_user(1)
+    monkeypatch.setattr(settings, "R2_PUBLIC_URL", None)
+
+    category = create_category(db)
+    club = create_club(db, category.id, leader_id=1)
+
+    client = TestClient(app)
+    response = client.post(
+        f"/clubs/{club.id}/posts",
+        data={"content": "Post no CDN"},
+        files=[("images", ("img.jpg", b"fake-image", "image/jpeg"))],
+    )
+
+    assert response.status_code == 201
+    data = response.json()
+    assert len(data["images"]) == 1
+    img_url = data["images"][0]["url"]
+    assert not img_url.startswith("http")
+
+
 # --- clubs.py router: GET /clubs/me ---
 
 
