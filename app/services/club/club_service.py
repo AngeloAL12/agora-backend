@@ -155,6 +155,9 @@ def list_pending_requests(
 
 
 def _public_url(object_key: str) -> str:
+    if not settings.R2_PUBLIC_URL:
+        return object_key
+
     base = settings.R2_PUBLIC_URL.rstrip("/")
     return f"{base}/{object_key}"
 

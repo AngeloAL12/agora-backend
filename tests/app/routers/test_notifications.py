@@ -278,7 +278,7 @@ def test_status_update_schedules_notification(
     assert calls[0]["new_status"] == ComplaintStatus.IN_PROGRESS
 
 
-def test_status_update_to_pending_does_not_schedule_notification(
+def test_invalid_status_transition_returns_409_and_no_notification(
     db, clear_dependency_overrides, monkeypatch
 ):
     from app.core.security import get_current_user as gcu
@@ -315,7 +315,9 @@ def test_status_update_to_pending_does_not_schedule_notification(
     )
 
     client = TestClient(app)
-    client.patch(f"/complaints/{complaint.id}/status", json={"status": "PENDING"})
+    response = client.patch(
+        f"/complaints/{complaint.id}/status", json={"status": "PENDING"}
+    )
 
-    assert len(calls) == 1
-    assert calls[0] == ComplaintStatus.PENDING
+    assert response.status_code == 409
+    assert not calls

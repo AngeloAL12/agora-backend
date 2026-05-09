@@ -227,6 +227,29 @@ def test_create_complaint_no_images(db, clear_dependency_overrides):
     assert len(response.json()["images"]) == 0
 
 
+def test_create_complaint_form_urlencoded_no_images_is_accepted(
+    db, clear_dependency_overrides
+):
+    user = _create_user(db, RoleName.USER, "student11f@itmexicali.edu.mx", "sub-11f")
+    _override_current_user(user.id)
+
+    client = TestClient(app)
+    response = client.post(
+        "/complaints",
+        data={
+            "title": "Sin Imagen URL Encoded",
+            "description": "Creada con form-urlencoded",
+            "category": "SECURITY",
+        },
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+
+    assert response.status_code == 201
+    assert response.json()["title"] == "Sin Imagen URL Encoded"
+    assert response.json()["status"] == ComplaintStatus.PENDING
+    assert len(response.json()["images"]) == 0
+
+
 def test_create_complaint_with_too_many_images(
     db, clear_dependency_overrides, monkeypatch
 ):
@@ -473,6 +496,65 @@ def test_upload_evidence_success(db, clear_dependency_overrides, monkeypatch):
     )
 
 
+def test_get_my_complaint_detail_includes_all_evidences(
+    db, clear_dependency_overrides, monkeypatch
+):
+    user = _create_user(db, RoleName.USER, "detail_ev@itmexicali.edu.mx", "detail-ev")
+    staff = _create_user(
+        db,
+        RoleName.STAFF,
+        "detail_ev_staff@itmexicali.edu.mx",
+        "detail-ev-staff",
+    )
+    _override_current_user(user.id)
+
+    complaint = Complaint(
+        id_user=user.id,
+        title="Detalle con evidencias",
+        description="Debe devolver todas las evidencias",
+        category=ComplaintCategory.SECURITY,
+        status=ComplaintStatus.IN_PROGRESS,
+    )
+    db.add(complaint)
+    db.flush()
+    db.add_all(
+        [
+            ComplaintEvidence(
+                id_complaint=complaint.id,
+                id_user=staff.id,
+                url=f"complaints/{complaint.id}/evidence/ev1.png",
+            ),
+            ComplaintEvidence(
+                id_complaint=complaint.id,
+                id_user=staff.id,
+                url=f"complaints/{complaint.id}/evidence/ev2.png",
+            ),
+        ]
+    )
+    db.commit()
+
+    async def fake_get_presigned_url(bucket_name, object_key, expiration=3600):
+        assert bucket_name
+        return f"https://cdn.example.com/{object_key}"
+
+    monkeypatch.setattr(
+        "app.routers.complaints.storage_service.get_presigned_url",
+        fake_get_presigned_url,
+    )
+
+    client = TestClient(app)
+    response = client.get(f"/complaints/{complaint.id}")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert "evidences" in data
+    assert len(data["evidences"]) == 2
+    assert {ev["url"] for ev in data["evidences"]} == {
+        f"https://cdn.example.com/complaints/{complaint.id}/evidence/ev1.png",
+        f"https://cdn.example.com/complaints/{complaint.id}/evidence/ev2.png",
+    }
+
+
 def test_update_complaint_status_not_found(db, clear_dependency_overrides):
     staff = _create_user(
         db,
@@ -511,7 +593,7 @@ def test_update_complaint_status_resolved_without_evidence_returns_400(
         title="Sin evidencia",
         description="No debe resolver",
         category=ComplaintCategory.SECURITY,
-        status=ComplaintStatus.PENDING,
+        status=ComplaintStatus.IN_PROGRESS,
     )
     db.add(complaint)
     db.commit()
@@ -525,6 +607,51 @@ def test_update_complaint_status_resolved_without_evidence_returns_400(
 
     assert response.status_code == 400
     assert "sin antes subir una evidencia" in response.json()["detail"]
+
+
+def test_update_complaint_status_pending_to_resolved_is_rejected_even_with_evidence(
+    db, clear_dependency_overrides
+):
+    staff = _create_user(
+        db,
+        RoleName.STAFF,
+        "staff_status_seq@itmexicali.edu.mx",
+        "staff-status-seq",
+    )
+    owner = _create_user(
+        db,
+        RoleName.USER,
+        "owner_status_seq@itmexicali.edu.mx",
+        "owner-status-seq",
+    )
+    _override_current_user_with_role(RoleName.STAFF, staff.id)
+
+    complaint = Complaint(
+        id_user=owner.id,
+        title="Secuencia inválida",
+        description="No debe pasar de pending a resolved",
+        category=ComplaintCategory.SECURITY,
+        status=ComplaintStatus.PENDING,
+    )
+    db.add(complaint)
+    db.flush()
+    db.add(
+        ComplaintEvidence(
+            id_complaint=complaint.id,
+            id_user=staff.id,
+            url=f"complaints/{complaint.id}/evidence/manual.png",
+        )
+    )
+    db.commit()
+
+    client = TestClient(app)
+    response = client.patch(
+        f"/complaints/{complaint.id}/status",
+        json={"status": "RESOLVED"},
+    )
+
+    assert response.status_code == 409
+    assert "transición de estado inválida" in response.json()["detail"].lower()
 
 
 def test_update_complaint_status_success(db, clear_dependency_overrides):
@@ -547,7 +674,7 @@ def test_update_complaint_status_success(db, clear_dependency_overrides):
         title="Actualizar estado",
         description="Detalle",
         category=ComplaintCategory.MAINTENANCE,
-        status=ComplaintStatus.PENDING,
+        status=ComplaintStatus.IN_PROGRESS,
     )
     db.add(complaint)
     db.flush()
@@ -606,6 +733,102 @@ def test_update_complaint_status_in_progress_without_evidence_is_allowed(
 
     assert response.status_code == 200
     assert response.json()["new_status"] == "IN_PROGRESS"
+
+
+def test_update_complaint_status_final_state_is_immutable(
+    db, clear_dependency_overrides
+):
+    staff = _create_user(
+        db,
+        RoleName.STAFF,
+        "staff_final_lock@itmexicali.edu.mx",
+        "staff-final-lock",
+    )
+    owner = _create_user(
+        db,
+        RoleName.USER,
+        "owner_final_lock@itmexicali.edu.mx",
+        "owner-final-lock",
+    )
+    _override_current_user_with_role(RoleName.STAFF, staff.id)
+
+    complaint = Complaint(
+        id_user=owner.id,
+        title="Final inmutable",
+        description="No debe volver a in_progress",
+        category=ComplaintCategory.MAINTENANCE,
+        status=ComplaintStatus.RESOLVED,
+    )
+    db.add(complaint)
+    db.commit()
+
+    client = TestClient(app)
+    response = client.patch(
+        f"/complaints/{complaint.id}/status",
+        json={"status": "IN_PROGRESS"},
+    )
+
+    assert response.status_code == 409
+    assert "finalizada" in response.json()["detail"].lower()
+
+
+def test_create_complaint_invalid_content_type_returns_415(
+    db, clear_dependency_overrides
+):
+    user = _create_user(db, RoleName.USER, "ct_user@itmexicali.edu.mx", "ct-user")
+    _override_current_user(user.id)
+
+    client = TestClient(app)
+    response = client.post(
+        "/complaints",
+        json={
+            "title": "CT inválido",
+            "description": "No multipart",
+            "category": "SECURITY",
+        },
+        headers={"Content-Type": "application/json"},
+    )
+
+    assert response.status_code == 415
+    assert "content-type inválido" in response.json()["detail"].lower()
+
+
+def test_upload_evidence_invalid_content_type_returns_415(
+    db, clear_dependency_overrides
+):
+    staff = _create_user(
+        db,
+        RoleName.STAFF,
+        "ct_staff@itmexicali.edu.mx",
+        "ct-staff",
+    )
+    owner = _create_user(
+        db,
+        RoleName.USER,
+        "ct_owner@itmexicali.edu.mx",
+        "ct-owner",
+    )
+    _override_current_user_with_role(RoleName.STAFF, staff.id)
+
+    complaint = Complaint(
+        id_user=owner.id,
+        title="Evidencia CT",
+        description="No multipart",
+        category=ComplaintCategory.SECURITY,
+        status=ComplaintStatus.PENDING,
+    )
+    db.add(complaint)
+    db.commit()
+
+    client = TestClient(app)
+    response = client.post(
+        f"/complaints/{complaint.id}/evidence",
+        json={"file": "fake"},
+        headers={"Content-Type": "application/json"},
+    )
+
+    assert response.status_code == 415
+    assert "content-type inválido" in response.json()["detail"].lower()
 
 
 # ── DELETE /complaints/{id} ──────────────────────────────────────────────────
