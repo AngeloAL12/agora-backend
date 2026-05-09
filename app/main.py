@@ -1,6 +1,8 @@
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, status
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 
 from app.routers.auth import auth_router, push_token_router, users_router
 from app.routers.clubs import router as clubs_router
@@ -31,6 +33,31 @@ app.include_router(push_token_router)
 app.include_router(clubs_router)
 app.include_router(map_router)
 app.include_router(notifications_router)
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(
+    request: Request,
+    exc: RequestValidationError,
+):
+    content_type = request.headers.get("content-type", "").lower()
+
+    if (
+        request.method == "POST"
+        and request.url.path == "/complaints"
+        and not content_type.startswith("multipart/form-data")
+    ):
+        return JSONResponse(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            content={
+                "detail": "Content-Type inválido. Se requiere multipart/form-data.",
+            },
+        )
+
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content={"detail": str(exc)},
+    )
 
 
 @app.get("/")
