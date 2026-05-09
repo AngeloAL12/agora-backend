@@ -1,0 +1,31 @@
+meta {
+  name: Update join-request status
+  type: http
+  seq: 19
+}
+
+patch {
+  url: {{base_url}}/clubs/{{club_id}}/join-requests/{{request_id}}
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{auth_token}}
+}
+
+body:json {
+  {
+    "action": "ACCEPT"
+  }
+}
+
+vars:pre-request {
+  club_id: 2
+  request_id: 3
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

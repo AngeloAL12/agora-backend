@@ -14,6 +14,7 @@ from app.models.auth.user import User
 from app.models.auth.user_session import UserSession
 from app.models.club.club import Club
 from app.models.club.club_category import ClubCategory
+from app.models.club.club_join_request import ClubJoinRequest, JoinRequestStatus
 from app.models.club.club_member import ClubMember
 from app.models.club.message import ClubMessage
 from app.models.club.post_comment import ClubPostComment
@@ -658,7 +659,7 @@ def test_join_leave_flow(db):
     app.dependency_overrides[get_current_user] = override_user(2)
     client = TestClient(app)
 
-    assert client.post(f"/clubs/{club.id}/members").status_code == 200
+    assert client.post(f"/clubs/{club.id}/members").status_code == 201
     assert client.delete(f"/clubs/{club.id}/members/me").status_code == 200
 
 
@@ -2261,3 +2262,726 @@ def test_list_events_non_member_forbidden(db, clear_dependency_overrides):
     response = client.get(f"/clubs/{club.id}/events")
 
     assert response.status_code == 403
+
+
+# =============================================================================
+# Tests added to improve coverage for app/services/club/club_service.py
+# and app/routers/clubs.py
+# =============================================================================
+
+
+# --- club_service.py: verify_membership with require_leader ---
+
+
+def test_service_verify_membership_leader_passes(db):
+    """verify_membership(require_leader=True) does not raise when user IS leader."""
+    from fastapi import HTTPException
+
+    from app.services.club.club_service import verify_membership
+
+    category = create_category(db)
+    club = create_club(db, category.id, leader_id=1)
+    # Should not raise
+    try:
+        verify_membership(db, club, user_id=1, require_leader=True)
+    except HTTPException:
+        pytest.fail("verify_membership raised for leader")
+
+
+def test_service_verify_membership_not_leader_raises(db):
+    """verify_membership(require_leader=True) raises 403 when user is NOT leader."""
+    from fastapi import HTTPException
+
+    from app.services.club.club_service import verify_membership
+
+    category = create_category(db)
+    club = create_club(db, category.id, leader_id=1)
+    create_membership(db, club.id, 2)
+
+    with pytest.raises(HTTPException) as exc_info:
+        verify_membership(db, club, user_id=2, require_leader=True)
+    assert exc_info.value.status_code == 403
+
+
+# --- club_service.py: get_club_posts_service body and _public_url ---
+
+
+def test_get_club_posts_with_actual_posts_covers_service(db, monkeypatch):
+    """Covers get_club_posts_service body (lines 80-141) and _public_url with URL."""
+    from app.models.club.post import ClubPost
+    from app.models.club.post_comment import ClubPostComment
+    from app.models.club.post_image import ClubPostImage
+    from app.models.club.post_like import ClubPostLike
+
+    app.dependency_overrides[get_current_user] = override_user(1)
+    monkeypatch.setattr(settings, "R2_PUBLIC_URL", "https://cdn.example.com")
+
+    category = create_category(db)
+    club = create_club(db, category.id, leader_id=1)
+    create_membership(db, club.id, 2)
+
+    post = ClubPost(content="Hello world", id_club=club.id, id_author=1)
+    db.add(post)
+    db.flush()
+    db.add(ClubPostImage(url="clubs/1/posts/img.jpg", id_post=post.id))
+    db.add(ClubPostLike(id_post=post.id, id_user=2))
+    comment = ClubPostComment(content="Great!", id_post=post.id, id_user=2)
+    db.add(comment)
+    db.commit()
+
+    client = TestClient(app)
+    response = client.get(f"/clubs/{club.id}/posts")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 1
+    assert data[0]["like_count"] == 1
+    assert data[0]["comment_count"] == 1
+    assert len(data[0]["images"]) == 1
+    img_url = data[0]["images"][0]["url"]
+    assert "https://cdn.example.com/clubs/1/posts/img.jpg" in img_url
+    assert data[0]["user_has_liked"] is False  # user 1 didn't like (user 2 did)
+
+
+def test_get_club_posts_liked_by_current_user(db, monkeypatch):
+    """Covers user_has_liked = True branch in get_club_posts_service."""
+    from app.models.club.post import ClubPost
+    from app.models.club.post_like import ClubPostLike
+
+    app.dependency_overrides[get_current_user] = override_user(1)
+    monkeypatch.setattr(settings, "R2_PUBLIC_URL", "https://cdn.example.com")
+
+    category = create_category(db)
+    club = create_club(db, category.id, leader_id=1)
+
+    post = ClubPost(content="Post liked by me", id_club=club.id, id_author=1)
+    db.add(post)
+    db.flush()
+    db.add(ClubPostLike(id_post=post.id, id_user=1))
+    db.commit()
+
+    client = TestClient(app)
+    response = client.get(f"/clubs/{club.id}/posts")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data[0]["user_has_liked"] is True
+
+
+# --- club_service.py: create_club_post_service with image URL building ---
+
+
+def test_create_club_post_with_image_builds_public_url(db, monkeypatch):
+    """Covers create_club_post_service lines 171-173 (_public_url with URL set)."""
+    app.dependency_overrides[get_current_user] = override_user(1)
+    monkeypatch.setattr(settings, "R2_PUBLIC_URL", "https://cdn.example.com")
+
+    category = create_category(db)
+    club = create_club(db, category.id, leader_id=1)
+
+    client = TestClient(app)
+    response = client.post(
+        f"/clubs/{club.id}/posts",
+        data={"content": "Post with image"},
+        files=[("images", ("img.jpg", b"fake-image", "image/jpeg"))],
+    )
+
+    assert response.status_code == 201
+    data = response.json()
+    assert len(data["images"]) == 1
+    assert "https://cdn.example.com" in data["images"][0]["url"]
+
+
+def test_create_club_post_with_image_no_public_url_returns_key(db, monkeypatch):
+    """_public_url falls back to bare object_key when R2_PUBLIC_URL is None."""
+    app.dependency_overrides[get_current_user] = override_user(1)
+    monkeypatch.setattr(settings, "R2_PUBLIC_URL", None)
+
+    category = create_category(db)
+    club = create_club(db, category.id, leader_id=1)
+
+    client = TestClient(app)
+    response = client.post(
+        f"/clubs/{club.id}/posts",
+        data={"content": "Post no CDN"},
+        files=[("images", ("img.jpg", b"fake-image", "image/jpeg"))],
+    )
+
+    assert response.status_code == 201
+    data = response.json()
+    assert len(data["images"]) == 1
+    img_url = data["images"][0]["url"]
+    assert not img_url.startswith("http")
+
+
+# --- clubs.py router: GET /clubs/me ---
+
+
+def test_get_my_clubs_returns_clubs_for_authenticated_user(db):
+    """Covers GET /clubs/me endpoint."""
+    app.dependency_overrides[get_current_user] = override_user(1)
+
+    category = create_category(db)
+    club = create_club(db, category.id, leader_id=1)
+
+    client = TestClient(app)
+    response = client.get("/clubs/me")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert any(c["id"] == club.id for c in data)
+
+
+def test_get_my_clubs_returns_empty_when_no_clubs(db):
+    """GET /clubs/me returns empty list when user has no clubs."""
+    app.dependency_overrides[get_current_user] = override_user(3)
+
+    client = TestClient(app)
+    response = client.get("/clubs/me")
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+# --- clubs.py router: authenticate_ws_user sub=None branch ---
+
+
+def test_authenticate_ws_user_returns_none_when_sub_is_none(db, monkeypatch):
+    """Covers the user_id is None return path in _authenticate_ws_user."""
+    monkeypatch.setattr(
+        "app.routers.clubs.decode_access_token",
+        lambda _: {"type": "access"},  # no "sub" key → sub will be None
+    )
+    headers = {"authorization": "Bearer fake-token"}
+    result = _authenticate_ws_user(headers, db)
+    assert result is None
+
+
+# --- clubs.py router: posts endpoint error paths ---
+
+
+def test_get_club_posts_club_not_found(db):
+    """GET /clubs/{id}/posts returns 404 when club does not exist."""
+    app.dependency_overrides[get_current_user] = override_user(1)
+    client = TestClient(app)
+    response = client.get("/clubs/999999/posts")
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Club no encontrado"
+
+
+def test_create_club_post_too_many_images(db):
+    """POST /clubs/{id}/posts returns 400 when more than 5 images are sent."""
+    app.dependency_overrides[get_current_user] = override_user(1)
+    category = create_category(db)
+    club = create_club(db, category.id, leader_id=1)
+    client = TestClient(app)
+    files = [("images", (f"img{i}.jpg", b"fake", "image/jpeg")) for i in range(6)]
+    response = client.post(
+        f"/clubs/{club.id}/posts",
+        data={"content": "Too many images"},
+        files=files,
+    )
+    assert response.status_code == 400
+    assert "5" in response.json()["detail"]
+
+
+def test_create_club_post_club_not_found(db):
+    """POST /clubs/{id}/posts returns 404 when club does not exist."""
+    app.dependency_overrides[get_current_user] = override_user(1)
+    client = TestClient(app)
+    response = client.post(
+        "/clubs/999999/posts",
+        data={"content": "Hello"},
+    )
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Club no encontrado"
+
+
+def test_delete_club_post_club_not_found(db):
+    """DELETE /clubs/{id}/posts/{post_id} returns 404 when club does not exist."""
+    app.dependency_overrides[get_current_user] = override_user(1)
+    client = TestClient(app)
+    response = client.delete("/clubs/999999/posts/1")
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Club no encontrado"
+
+
+def test_delete_club_post_post_not_found(db):
+    """DELETE /clubs/{id}/posts/{post_id} returns 404 when post does not exist."""
+    app.dependency_overrides[get_current_user] = override_user(1)
+    category = create_category(db)
+    club = create_club(db, category.id, leader_id=1)
+    client = TestClient(app)
+    response = client.delete(f"/clubs/{club.id}/posts/999999")
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Publicación no encontrada"
+
+
+# --- clubs.py router: comments endpoint error paths ---
+
+
+def test_get_post_comments_club_not_found(db):
+    """GET /clubs/{id}/posts/{post_id}/comments returns 404 when club does not exist."""
+    app.dependency_overrides[get_current_user] = override_user(1)
+    client = TestClient(app)
+    response = client.get("/clubs/999999/posts/1/comments")
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Club no encontrado"
+
+
+def test_get_post_comments_post_not_found(db):
+    """GET /clubs/{id}/posts/{post_id}/comments returns 404 when post does not exist."""
+    app.dependency_overrides[get_current_user] = override_user(1)
+    category = create_category(db)
+    club = create_club(db, category.id, leader_id=1)
+    client = TestClient(app)
+    response = client.get(f"/clubs/{club.id}/posts/999999/comments")
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Publicación no encontrada"
+
+
+def test_create_post_comment_club_not_found(db):
+    """POST /clubs/{id}/posts/{post_id}/comments returns 404 when club not found."""
+    app.dependency_overrides[get_current_user] = override_user(1)
+    client = TestClient(app)
+    response = client.post(
+        "/clubs/999999/posts/1/comments",
+        json={"content": "Hello"},
+    )
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Club no encontrado"
+
+
+def test_create_post_comment_post_not_found(db):
+    """POST /clubs/{id}/posts/{post_id}/comments returns 404 when post not found."""
+    app.dependency_overrides[get_current_user] = override_user(1)
+    category = create_category(db)
+    club = create_club(db, category.id, leader_id=1)
+    client = TestClient(app)
+    response = client.post(
+        f"/clubs/{club.id}/posts/999999/comments",
+        json={"content": "Hello"},
+    )
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Publicación no encontrada"
+
+
+# --- clubs.py router: likes endpoint error paths ---
+
+
+def test_like_post_club_not_found(db):
+    """POST /clubs/{id}/posts/{post_id}/like returns 404 when club does not exist."""
+    app.dependency_overrides[get_current_user] = override_user(1)
+    client = TestClient(app)
+    response = client.post("/clubs/999999/posts/1/like")
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Club no encontrado"
+
+
+def test_like_post_post_not_found(db):
+    """POST /clubs/{id}/posts/{post_id}/like returns 404 when post does not exist."""
+    app.dependency_overrides[get_current_user] = override_user(1)
+    category = create_category(db)
+    club = create_club(db, category.id, leader_id=1)
+    client = TestClient(app)
+    response = client.post(f"/clubs/{club.id}/posts/999999/like")
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Publicación no encontrada"
+
+
+def test_like_post_already_liked_returns_400(db):
+    """POST /clubs/{id}/posts/{post_id}/like returns 400 when already liked."""
+    app.dependency_overrides[get_current_user] = override_user(1)
+    category = create_category(db)
+    club = create_club(db, category.id, leader_id=1)
+    client = TestClient(app)
+
+    res = client.post(f"/clubs/{club.id}/posts", data={"content": "Post"})
+    post_id = res.json()["id"]
+
+    client.post(f"/clubs/{club.id}/posts/{post_id}/like")
+
+    response = client.post(f"/clubs/{club.id}/posts/{post_id}/like")
+    assert response.status_code == 400
+    assert "ya dio like" in response.json()["detail"]
+
+
+def test_unlike_post_club_not_found(db):
+    """DELETE /clubs/{id}/posts/{post_id}/like returns 404 when club does not exist."""
+    app.dependency_overrides[get_current_user] = override_user(1)
+    client = TestClient(app)
+    response = client.delete("/clubs/999999/posts/1/like")
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Club no encontrado"
+
+
+def test_unlike_post_post_not_found(db):
+    """DELETE /clubs/{id}/posts/{post_id}/like returns 404 when post does not exist."""
+    app.dependency_overrides[get_current_user] = override_user(1)
+    category = create_category(db)
+    club = create_club(db, category.id, leader_id=1)
+    client = TestClient(app)
+    response = client.delete(f"/clubs/{club.id}/posts/999999/like")
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Publicación no encontrada"
+
+
+def test_unlike_post_not_liked_returns_400(db):
+    """DELETE /clubs/{id}/posts/{post_id}/like returns 400 when post was never liked."""
+    app.dependency_overrides[get_current_user] = override_user(1)
+    category = create_category(db)
+    club = create_club(db, category.id, leader_id=1)
+    client = TestClient(app)
+
+    res = client.post(f"/clubs/{club.id}/posts", data={"content": "Post"})
+    post_id = res.json()["id"]
+
+    response = client.delete(f"/clubs/{club.id}/posts/{post_id}/like")
+    assert response.status_code == 400
+    assert "no había dado like" in response.json()["detail"]
+
+
+# --- clubs.py router: GET /clubs/{club_id}/members success path ---
+
+
+def test_get_club_members_success_returns_leader_and_members(db):
+    """GET /clubs/{id}/members returns list with leader and members (lines 812-847)."""
+    app.dependency_overrides[get_current_user] = override_user(1)
+    category = create_category(db)
+    club = create_club(db, category.id, leader_id=1)
+    create_membership(db, club.id, 2)
+
+    client = TestClient(app)
+    response = client.get(f"/clubs/{club.id}/members")
+
+    assert response.status_code == 200
+    data = response.json()
+    ids = {m["id"] for m in data}
+    assert 1 in ids
+    assert 2 in ids
+    leader_entry = next(m for m in data if m["id"] == 1)
+    assert leader_entry["is_leader"] is True
+
+
+def test_get_club_members_club_not_found(db):
+    """GET /clubs/{id}/members returns 404 when club does not exist (line 780)."""
+    app.dependency_overrides[get_current_user] = override_user(1)
+    client = TestClient(app)
+    response = client.get("/clubs/999999/members")
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Club no encontrado"
+
+
+# --- clubs.py router: delete_club_post forbidden path (lines 929-931) ---
+
+
+def test_delete_club_post_non_author_non_leader_forbidden(db):
+    """DELETE post returns 403 when user is neither author nor leader (929-931)."""
+    category = create_category(db)
+    club = create_club(db, category.id, leader_id=1)
+    create_membership(db, club.id, 2)
+    create_membership(db, club.id, 3)
+
+    # User 2 creates the post
+    app.dependency_overrides[get_current_user] = override_user(2)
+    client = TestClient(app)
+    res = client.post(f"/clubs/{club.id}/posts", data={"content": "Post by user2"})
+    post_id = res.json()["id"]
+
+    # User 3 (not author, not leader) tries to delete
+    app.dependency_overrides[get_current_user] = override_user(3)
+    response = client.delete(f"/clubs/{club.id}/posts/{post_id}")
+    assert response.status_code == 403
+    assert "Solo el autor o el líder" in response.json()["detail"]
+
+
+# --- clubs.py router: update_club duplicate name and invalid category paths ---
+
+
+def test_update_club_name_to_existing_name_returns_400(db):
+    """PATCH /clubs/{id} returns 400 for duplicate name (line 619)."""
+    app.dependency_overrides[get_current_user] = override_user(1)
+    category = create_category(db)
+    club_a = create_club(db, category.id, leader_id=1, name=unique_name("Club A"))
+    club_b = create_club(db, category.id, leader_id=1, name=unique_name("Club B"))
+
+    client = TestClient(app)
+    response = client.patch(f"/clubs/{club_b.id}", data={"name": club_a.name})
+    assert response.status_code == 400
+    assert "Nombre de club ya existe" in response.json()["detail"]
+
+
+def test_update_club_invalid_category_returns_400(db):
+    """PATCH /clubs/{id} returns 400 for invalid category (line 628)."""
+    app.dependency_overrides[get_current_user] = override_user(1)
+    category = create_category(db)
+    club = create_club(db, category.id, leader_id=1)
+
+    client = TestClient(app)
+    response = client.patch(f"/clubs/{club.id}", data={"id_category": "999999"})
+    assert response.status_code == 400
+    assert "Categoría inválida" in response.json()["detail"]
+
+
+# --- clubs.py router: _authenticate_ws_user_for_club paths (lines 215, 224) ---
+
+
+def test_authenticate_ws_user_for_club_returns_none_for_club_not_found(db, monkeypatch):
+    """_authenticate_ws_user_for_club returns None when club not found (line 215)."""
+    from app.routers.clubs import _authenticate_ws_user_for_club
+
+    monkeypatch.setattr(
+        "app.routers.clubs.decode_access_token",
+        lambda _: {"sub": "1", "type": "access"},
+    )
+    headers = {"authorization": "Bearer fake-token"}
+    result = _authenticate_ws_user_for_club(headers, club_id=999999, db=db)
+    assert result is None
+
+
+def test_authenticate_ws_user_for_club_returns_none_for_non_member(db, monkeypatch):
+    """_authenticate_ws_user_for_club returns None when user is not a member (224)."""
+    from app.routers.clubs import _authenticate_ws_user_for_club
+
+    category = create_category(db)
+    club = create_club(db, category.id, leader_id=1)
+
+    # user 2 is NOT a member
+    monkeypatch.setattr(
+        "app.routers.clubs.decode_access_token",
+        lambda _: {"sub": "2", "type": "access"},
+    )
+    headers = {"authorization": "Bearer fake-token"}
+    result = _authenticate_ws_user_for_club(headers, club_id=club.id, db=db)
+    assert result is None
+
+
+# --- clubs.py router: events with club not found (lines 1244, 1281) ---
+
+
+def test_update_event_club_not_found_returns_404(db):
+    """PATCH /clubs/{id}/events/{event_id} returns 404 when club not found (1244)."""
+    app.dependency_overrides[get_current_user] = override_user(1)
+    client = TestClient(app)
+    response = client.patch(
+        "/clubs/999999/events/1",
+        json={"title": "Test"},
+    )
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Club no encontrado"
+
+
+def test_delete_event_club_not_found_returns_404(db):
+    """DELETE /clubs/{id}/events/{event_id} returns 404 when club not found (1281)."""
+    app.dependency_overrides[get_current_user] = override_user(1)
+    client = TestClient(app)
+    response = client.delete("/clubs/999999/events/1")
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Club no encontrado"
+
+
+# ---------------------------------------------------------------------------
+# Join-request tests
+# ---------------------------------------------------------------------------
+
+
+def _create_private_club(db, category_id, leader_id=1):
+    club = create_club(db, category_id, leader_id=leader_id)
+    club.is_private = True
+    db.commit()
+    return club
+
+
+def _seed_join_request(db, club_id, user_id) -> ClubJoinRequest:
+    req = ClubJoinRequest(
+        id_club=club_id,
+        id_user=user_id,
+        status=JoinRequestStatus.PENDING,
+    )
+    db.add(req)
+    db.commit()
+    db.refresh(req)
+    return req
+
+
+def test_join_private_club_creates_request(db):
+    category = create_category(db)
+    club = _create_private_club(db, category.id, leader_id=1)
+
+    app.dependency_overrides[get_current_user] = override_user(2)
+    client = TestClient(app)
+
+    response = client.post(f"/clubs/{club.id}/members")
+
+    assert response.status_code == 202
+    body = response.json()
+    assert "request_id" in body
+
+    request_in_db = (
+        db.query(ClubJoinRequest)
+        .filter(ClubJoinRequest.id == body["request_id"])
+        .first()
+    )
+    assert request_in_db is not None
+    assert request_in_db.status == JoinRequestStatus.PENDING
+    assert request_in_db.id_user == 2
+
+
+def test_join_private_club_duplicate_request(db):
+    category = create_category(db)
+    club = _create_private_club(db, category.id, leader_id=1)
+    _seed_join_request(db, club.id, 2)
+
+    app.dependency_overrides[get_current_user] = override_user(2)
+    client = TestClient(app)
+
+    response = client.post(f"/clubs/{club.id}/members")
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Ya tienes una solicitud pendiente"
+
+
+def test_join_private_club_already_member(db):
+    category = create_category(db)
+    club = _create_private_club(db, category.id, leader_id=1)
+    create_membership(db, club.id, 2)
+
+    app.dependency_overrides[get_current_user] = override_user(2)
+    client = TestClient(app)
+
+    response = client.post(f"/clubs/{club.id}/members")
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Ya eres miembro del club"
+
+
+def test_get_join_requests_leader(db):
+    category = create_category(db)
+    club = _create_private_club(db, category.id, leader_id=1)
+    _seed_join_request(db, club.id, 2)
+    _seed_join_request(db, club.id, 3)
+
+    app.dependency_overrides[get_current_user] = override_user(1)
+    client = TestClient(app)
+
+    response = client.get(f"/clubs/{club.id}/join-requests")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 2
+    assert all("user" in item for item in data)
+
+
+def test_get_join_requests_non_leader(db):
+    category = create_category(db)
+    club = _create_private_club(db, category.id, leader_id=1)
+
+    app.dependency_overrides[get_current_user] = override_user(2)
+    client = TestClient(app)
+
+    response = client.get(f"/clubs/{club.id}/join-requests")
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Solo el líder puede ver las solicitudes"
+
+
+def test_accept_join_request(db):
+    category = create_category(db)
+    club = _create_private_club(db, category.id, leader_id=1)
+    req = _seed_join_request(db, club.id, 2)
+
+    app.dependency_overrides[get_current_user] = override_user(1)
+    client = TestClient(app)
+
+    response = client.patch(
+        f"/clubs/{club.id}/join-requests/{req.id}",
+        json={"action": "ACCEPT"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "ACCEPTED"
+
+    member = (
+        db.query(ClubMember)
+        .filter(ClubMember.id_club == club.id, ClubMember.id_user == 2)
+        .first()
+    )
+    assert member is not None
+
+
+def test_reject_join_request(db):
+    category = create_category(db)
+    club = _create_private_club(db, category.id, leader_id=1)
+    req = _seed_join_request(db, club.id, 2)
+
+    app.dependency_overrides[get_current_user] = override_user(1)
+    client = TestClient(app)
+
+    response = client.patch(
+        f"/clubs/{club.id}/join-requests/{req.id}",
+        json={"action": "REJECT"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "REJECTED"
+
+    member = (
+        db.query(ClubMember)
+        .filter(ClubMember.id_club == club.id, ClubMember.id_user == 2)
+        .first()
+    )
+    assert member is None
+
+
+def test_resolve_already_resolved_request(db):
+    category = create_category(db)
+    club = _create_private_club(db, category.id, leader_id=1)
+    req = _seed_join_request(db, club.id, 2)
+
+    app.dependency_overrides[get_current_user] = override_user(1)
+    client = TestClient(app)
+
+    client.patch(
+        f"/clubs/{club.id}/join-requests/{req.id}",
+        json={"action": "ACCEPT"},
+    )
+    response = client.patch(
+        f"/clubs/{club.id}/join-requests/{req.id}",
+        json={"action": "ACCEPT"},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "La solicitud ya fue resuelta"
+
+
+def test_resolve_request_non_leader(db):
+    category = create_category(db)
+    club = _create_private_club(db, category.id, leader_id=1)
+    req = _seed_join_request(db, club.id, 3)
+
+    app.dependency_overrides[get_current_user] = override_user(2)
+    client = TestClient(app)
+
+    response = client.patch(
+        f"/clubs/{club.id}/join-requests/{req.id}",
+        json={"action": "ACCEPT"},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Solo el líder puede resolver solicitudes"
+
+
+def test_resolve_request_not_found(db):
+    category = create_category(db)
+    club = _create_private_club(db, category.id, leader_id=1)
+
+    app.dependency_overrides[get_current_user] = override_user(1)
+    client = TestClient(app)
+
+    response = client.patch(
+        f"/clubs/{club.id}/join-requests/999999",
+        json={"action": "ACCEPT"},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Solicitud no encontrada"

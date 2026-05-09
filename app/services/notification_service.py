@@ -22,6 +22,7 @@ def create_notification(
     title: str,
     body: str,
     reference_id: int | None = None,
+    extra_id: int | None = None,
 ) -> Notification:
     notification = Notification(
         id_user=id_user,
@@ -30,6 +31,7 @@ def create_notification(
         title=title,
         body=body,
         reference_id=reference_id,
+        extra_id=extra_id,
     )
     db.add(notification)
     db.commit()
@@ -46,6 +48,7 @@ def create_notification(
                     "event_type": event_type,
                     "category": category,
                     "reference_id": reference_id,
+                    "extra_id": extra_id,
                 },
             )
         except Exception:
