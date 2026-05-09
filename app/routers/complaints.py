@@ -162,6 +162,13 @@ async def create_complaint(
     Crea una nueva queja con datos multipart/form-data.
     El campo images es opcional (0..3 archivos).
     """
+    # [TC-QC-74] Bloqueo de imágenes en Sugerencias
+    if type == ComplaintType.SUGGESTION and images:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Las sugerencias no pueden incluir imágenes",
+        )
+
     if images and len(images) > 3:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -181,6 +188,17 @@ async def create_complaint(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="La descripción no puede estar vacía",
         )
+
+    # [TC-QC-72, TC-QC-75] Persistencia indebida de ubicación en Sugerencias
+    # Las sugerencias no deben tener ubicación ni aceptar datos de edificio/salón.
+    if type == ComplaintType.SUGGESTION:
+        if id_building is not None or (classroom is not None and classroom.strip()):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Las sugerencias no pueden incluir ubicación",
+            )
+        id_building = None
+        classroom = None
 
     complaint = Complaint(
         id_user=current_user.id,
@@ -204,14 +222,15 @@ async def create_complaint(
             )
             db.add(ComplaintImage(id_complaint=complaint.id, url=object_key))
 
-    db.add(
-        ComplaintStatusHistory(
-            id_complaint=complaint.id,
-            id_user=current_user.id,
-            old_status=None,
-            new_status=ComplaintStatus.PENDING,
+    if type != ComplaintType.SUGGESTION:
+        db.add(
+            ComplaintStatusHistory(
+                id_complaint=complaint.id,
+                id_user=current_user.id,
+                old_status=None,
+                new_status=ComplaintStatus.PENDING,
+            )
         )
-    )
     db.commit()
 
     background_tasks.add_task(
@@ -353,6 +372,13 @@ async def upload_complaint_evidence(
             detail="Queja no encontrada",
         )
 
+    # [TC-QC-76] Bloqueo de evidencia para Sugerencias
+    if complaint.type == ComplaintType.SUGGESTION:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Las sugerencias no pueden tener evidencia",
+        )
+
     bucket_name = settings.R2_BUCKET_PRIVATE
     prefix = f"complaints/{complaint_id}/evidence"
 
@@ -391,6 +417,13 @@ async def update_complaint_status(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Queja no encontrada",
+        )
+
+    # [TC-QC-77] Desactivación de estados en Sugerencias
+    if complaint.type == ComplaintType.SUGGESTION:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Las sugerencias no tienen flujo de estados",
         )
 
     if status_update.status == ComplaintStatus.RESOLVED:
