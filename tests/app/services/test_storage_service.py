@@ -82,7 +82,6 @@ async def test_upload_file_uses_correct_bucket_and_content_type(
         file = make_upload_file("photo.jpg", "image/jpeg")
         await service.upload_file(file, "target-bucket", "docs")
 
-    _, acll_kwargs = client.upload_fileobj.call_args
     assert client.upload_fileobj.call_args[0][1] == "target-bucket"
     assert (
         client.upload_fileobj.call_args[1]["ExtraArgs"]["ContentType"] == "image/jpeg"
