@@ -227,6 +227,29 @@ def test_create_complaint_no_images(db, clear_dependency_overrides):
     assert len(response.json()["images"]) == 0
 
 
+def test_create_complaint_form_urlencoded_no_images_is_accepted(
+    db, clear_dependency_overrides
+):
+    user = _create_user(db, RoleName.USER, "student11f@itmexicali.edu.mx", "sub-11f")
+    _override_current_user(user.id)
+
+    client = TestClient(app)
+    response = client.post(
+        "/complaints",
+        data={
+            "title": "Sin Imagen URL Encoded",
+            "description": "Creada con form-urlencoded",
+            "category": "SECURITY",
+        },
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+
+    assert response.status_code == 201
+    assert response.json()["title"] == "Sin Imagen URL Encoded"
+    assert response.json()["status"] == ComplaintStatus.PENDING
+    assert len(response.json()["images"]) == 0
+
+
 def test_create_complaint_with_too_many_images(
     db, clear_dependency_overrides, monkeypatch
 ):

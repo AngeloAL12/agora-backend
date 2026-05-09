@@ -82,7 +82,7 @@ def _validate_status_transition(
 ) -> None:
     if new_status == current_status:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=status.HTTP_409_CONFLICT,
             detail=f"La queja ya se encuentra en estado {current_status.value}.",
         )
 
