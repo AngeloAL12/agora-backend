@@ -112,7 +112,7 @@ async def test_upload_file_raises_http_exception_on_client_error(
         with pytest.raises(HTTPException) as exc_info:
             await service.upload_file(file, "bucket", "prefix")
 
-    assert exc_info.value.status_code in [422, 500]
+    assert exc_info.value.status_code == 500
     assert "subir" in exc_info.value.detail.lower()
 
 

@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, status
+from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
@@ -54,10 +55,7 @@ async def validation_exception_handler(
             },
         )
 
-    return JSONResponse(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-        content={"detail": str(exc)},
-    )
+    return await request_validation_exception_handler(request, exc)
 
 
 @app.get("/")
