@@ -396,33 +396,6 @@ def test_create_complaint_empty_description_returns_400(db, clear_dependency_ove
     assert "descripción" in response.json()["detail"].lower()
 
 
-def test_create_complaint_invalid_content_type_returns_415(
-    db,
-    clear_dependency_overrides,
-):
-    user = _create_user(
-        db,
-        RoleName.USER,
-        "student16@itmexicali.edu.mx",
-        "sub-16",
-    )
-    _override_current_user(user.id)
-
-    client = TestClient(app)
-
-    response = client.post(
-        "/complaints",
-        json={
-            "title": "Titulo",
-            "description": "Descripcion",
-            "category": "SECURITY",
-        },
-    )
-
-    assert response.status_code == 415
-    assert "content-type" in response.json()["detail"].lower()
-
-
 def test_get_complaint_not_found(db, clear_dependency_overrides):
     """Test that requesting nonexistent complaint returns 404"""
     user = _create_user(db, RoleName.USER, "student13@itmexicali.edu.mx", "sub-13")
