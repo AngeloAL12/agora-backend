@@ -14,6 +14,7 @@ from fastapi import (
     status,
 )
 from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -44,6 +45,10 @@ from app.schemas.club.club import (
     ClubResponse,
 )
 from app.schemas.club.event import EventCreate, EventResponse, EventUpdate
+from app.schemas.club.join_request import (
+    JoinRequestActionBody,
+    JoinRequestResponse,
+)
 from app.schemas.club.message import (
     ClubMessageInput,
     ClubMessageResponse,
@@ -58,6 +63,9 @@ from app.schemas.club.post import (
 from app.services.club.club_service import (
     create_club_post_service,
     get_club_posts_service,
+    list_pending_requests,
+    request_join_club,
+    resolve_join_request,
 )
 from app.services.push_service import send_push_notification
 from app.services.redis_service import redis_chat_manager
@@ -533,6 +541,7 @@ async def create_club(
     name: Annotated[str, Form(...)],
     description: Annotated[str, Form(...)],
     id_category: Annotated[int, Form(...)],
+    is_private: Annotated[bool, Form()] = False,
     profile_image: Annotated[UploadFile | None, File()] = None,
     cover_image: Annotated[UploadFile | None, File()] = None,
     db: Session = Depends(get_db),
@@ -556,6 +565,7 @@ async def create_club(
         cover_image=None,
         id_category=id_category,
         id_leader=current_user.id,
+        is_private=is_private,
     )
 
     try:
@@ -689,7 +699,7 @@ async def delete_club(
     return {"message": "Club eliminado"}
 
 
-@router.post("/{club_id}/members")
+@router.post("/{club_id}/members", status_code=status.HTTP_201_CREATED)
 def join_club(
     club_id: int,
     db: Session = Depends(get_db),
@@ -698,6 +708,16 @@ def join_club(
     club = db.query(Club).filter(Club.id == club_id).first()
     if not club:
         raise HTTPException(status_code=404, detail="Club no encontrado")
+
+    if club.is_private:
+        join_request = request_join_club(db, club, current_user.id)
+        return JSONResponse(
+            status_code=202,
+            content={
+                "message": "Solicitud enviada, esperando aprobación del líder",
+                "request_id": join_request.id,
+            },
+        )
 
     exists = (
         db.query(ClubMember)
@@ -710,6 +730,39 @@ def join_club(
     db.add(ClubMember(id_club=club_id, id_user=current_user.id))
     db.commit()
     return {"message": "Te uniste al club"}
+
+
+@router.get("/{club_id}/join-requests", response_model=list[JoinRequestResponse])
+def get_join_requests(
+    club_id: int,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    club = db.query(Club).filter(Club.id == club_id).first()
+    if not club:
+        raise HTTPException(status_code=404, detail="Club no encontrado")
+
+    return list_pending_requests(db, club, current_user.id)
+
+
+@router.patch(
+    "/{club_id}/join-requests/{request_id}",
+    response_model=JoinRequestResponse,
+)
+def resolve_join_request_endpoint(
+    club_id: int,
+    request_id: int,
+    body: JoinRequestActionBody,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    club = db.query(Club).filter(Club.id == club_id).first()
+    if not club:
+        raise HTTPException(status_code=404, detail="Club no encontrado")
+
+    return resolve_join_request(
+        db, club, request_id, body.action.value, current_user.id
+    )
 
 
 @router.delete("/{club_id}/members/me")

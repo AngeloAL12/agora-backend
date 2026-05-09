@@ -20,6 +20,7 @@ class ClubResponse(BaseModel):
 
     id_category: int
     id_leader: int
+    is_private: bool
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)

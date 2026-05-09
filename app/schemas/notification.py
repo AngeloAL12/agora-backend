@@ -17,6 +17,7 @@ class NotificationResponse(BaseModel):
     body: str
     is_read: bool
     reference_id: int | None
+    extra_id: int | None = None
     created_at: datetime | Any = Field(..., description="ISO 8601 timestamp")
 
     model_config = ConfigDict(from_attributes=True)
