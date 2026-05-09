@@ -1,5 +1,6 @@
 import logging
 import uuid
+from pathlib import Path
 
 import aioboto3
 from botocore.exceptions import ClientError
@@ -8,6 +9,47 @@ from fastapi import HTTPException, UploadFile
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+ALLOWED_IMAGE_EXTENSIONS = {"png", "jpg", "jpeg"}
+ALLOWED_IMAGE_CONTENT_TYPES = {"image/png", "image/jpeg"}
+
+PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+JPEG_SIGNATURES = (b"\xff\xd8\xff",)
+
+
+def _get_file_extension(filename: str) -> str:
+    return Path(filename).suffix.lower().removeprefix(".")
+
+
+async def _validate_image_upload(file: UploadFile) -> str:
+    filename = file.filename or ""
+    extension = _get_file_extension(filename)
+
+    if extension not in ALLOWED_IMAGE_EXTENSIONS:
+        raise HTTPException(
+            status_code=422,
+            detail="Extensión de archivo inválida. Solo se permiten: png, jpg, jpeg.",
+        )
+
+    if file.content_type not in ALLOWED_IMAGE_CONTENT_TYPES:
+        raise HTTPException(
+            status_code=422,
+            detail="Content-Type inválido. Solo se permiten imágenes PNG o JPEG.",
+        )
+
+    header = await file.read(16)
+    await file.seek(0)
+
+    is_png = extension == "png" and header.startswith(PNG_SIGNATURE)
+    is_jpeg = extension in {"jpg", "jpeg"} and header.startswith(JPEG_SIGNATURES)
+
+    if not is_png and not is_jpeg:
+        raise HTTPException(
+            status_code=422,
+            detail="El contenido del archivo no corresponde a una imagen válida.",
+        )
+
+    return extension
 
 
 class StorageService:
@@ -20,9 +62,9 @@ class StorageService:
         self._endpoint_url = settings.R2_ENDPOINT
 
     async def upload_file(self, file: UploadFile, bucket_name: str, prefix: str) -> str:
-        filename = file.filename or ""
-        extension = filename.split(".")[-1] if "." in filename else "bin"
+        extension = await _validate_image_upload(file)
         unique_filename = f"{uuid.uuid4()}.{extension}"
+
         object_key = f"{prefix}/{unique_filename}"
 
         try:

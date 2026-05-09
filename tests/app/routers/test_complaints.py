@@ -272,6 +272,89 @@ def test_create_complaint_empty_title_returns_400(db, clear_dependency_overrides
     assert "título" in response.json()["detail"].lower()
 
 
+def test_create_complaint_blank_classroom_is_saved_as_none(
+    db, clear_dependency_overrides
+):
+    user = _create_user(db, RoleName.USER, "classroom@itmexicali.edu.mx", "classroom-1")
+    _override_current_user(user.id)
+
+    client = TestClient(app)
+    response = client.post(
+        "/complaints",
+        data={
+            "title": "Aula dañada",
+            "description": "Detalle válido",
+            "category": "MAINTENANCE",
+            "classroom": "   ",
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json()["classroom"] is None
+
+
+def test_create_complaint_title_too_long_returns_422(db, clear_dependency_overrides):
+    user = _create_user(db, RoleName.USER, "longtitle@itmexicali.edu.mx", "long-title")
+    _override_current_user(user.id)
+
+    client = TestClient(app)
+    response = client.post(
+        "/complaints",
+        data={
+            "title": "a" * 256,
+            "description": "Descripción válida",
+            "category": "MAINTENANCE",
+        },
+    )
+
+    assert response.status_code == 422
+    assert "255" in response.json()["detail"]
+
+
+def test_create_complaint_description_too_long_returns_422(
+    db, clear_dependency_overrides
+):
+    user = _create_user(db, RoleName.USER, "longdesc@itmexicali.edu.mx", "long-desc")
+    _override_current_user(user.id)
+
+    client = TestClient(app)
+    response = client.post(
+        "/complaints",
+        data={
+            "title": "Título válido",
+            "description": "a" * 1001,
+            "category": "MAINTENANCE",
+        },
+    )
+
+    assert response.status_code == 422
+    assert "1000" in response.json()["detail"]
+
+
+def test_create_complaint_classroom_value_is_trimmed(db, clear_dependency_overrides):
+    user = _create_user(
+        db,
+        RoleName.USER,
+        "classroom2@itmexicali.edu.mx",
+        "classroom-2",
+    )
+    _override_current_user(user.id)
+
+    client = TestClient(app)
+    response = client.post(
+        "/complaints",
+        data={
+            "title": "Aula sucia",
+            "description": "Detalle válido",
+            "category": "MAINTENANCE",
+            "classroom": "  A-101  ",
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json()["classroom"] == "A-101"
+
+
 def test_create_complaint_empty_description_returns_400(db, clear_dependency_overrides):
     user = _create_user(db, RoleName.USER, "student15@itmexicali.edu.mx", "sub-15")
     _override_current_user(user.id)
