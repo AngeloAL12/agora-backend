@@ -7,22 +7,13 @@ from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-# Set test environment variables before importing app modules
-os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
-os.environ.setdefault("SECRET_KEY", "test-secret-key")
-os.environ.setdefault("R2_ACCOUNT_ID", "test-account-id")
-os.environ.setdefault("R2_ACCESS_KEY_ID", "test-access-key")
-os.environ.setdefault("R2_SECRET_ACCESS_KEY", "test-secret-key")
-os.environ.setdefault("R2_BUCKET_PRIVATE", "test-private-bucket")
-os.environ.setdefault("R2_BUCKET_PUBLIC", "test-public-bucket")
-os.environ.setdefault("R2_PUBLIC_URL", "https://test-public-url.com")
-
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///:memory:")
-
 from app.core.database import Base, get_db
 from app.main import app
 from app.models.auth.role import Role
 from app.services.redis_service import redis_chat_manager
+
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///:memory:")
+SECRET_KEY = os.getenv("SECRET_KEY", "test-secret-key")
 
 if DATABASE_URL.startswith("sqlite"):
     engine = create_engine(
