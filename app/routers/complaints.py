@@ -44,11 +44,53 @@ from app.services.storage_service import storage_service
 
 router = APIRouter(prefix="/complaints", tags=["complaints"])
 
+MAX_TITLE_LENGTH = 255
+MAX_DESCRIPTION_LENGTH = 1000
+
 _FINAL_STATUSES = {ComplaintStatus.RESOLVED, ComplaintStatus.REJECTED}
 _ALLOWED_TRANSITIONS: dict[ComplaintStatus, set[ComplaintStatus]] = {
     ComplaintStatus.PENDING: {ComplaintStatus.IN_PROGRESS, ComplaintStatus.REJECTED},
     ComplaintStatus.IN_PROGRESS: {ComplaintStatus.RESOLVED, ComplaintStatus.REJECTED},
 }
+
+
+def _normalize_optional_text(value: str | None) -> str | None:
+    if value is None:
+        return None
+
+    cleaned = value.strip()
+    return cleaned or None
+
+
+def _validate_create_complaint_text(title: str, description: str) -> tuple[str, str]:
+    title_clean = title.strip()
+    description_clean = description.strip()
+
+    if not title_clean:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El título no puede estar vacío",
+        )
+
+    if not description_clean:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="La descripción no puede estar vacía",
+        )
+
+    if len(title_clean) > MAX_TITLE_LENGTH:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="El título no puede exceder 255 caracteres",
+        )
+
+    if len(description_clean) > MAX_DESCRIPTION_LENGTH:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="La descripción no puede exceder 1000 caracteres",
+        )
+
+    return title_clean, description_clean
 
 
 def _ensure_any_content_type(
@@ -248,19 +290,11 @@ async def create_complaint(
             detail="Máximo 3 imágenes permitidas",
         )
 
-    title_clean = title.strip()
-    description_clean = description.strip()
-
-    if not title_clean:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="El título no puede estar vacío",
-        )
-    if not description_clean:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="La descripción no puede estar vacía",
-        )
+    title_clean, description_clean = _validate_create_complaint_text(
+        title=title,
+        description=description,
+    )
+    classroom_clean = _normalize_optional_text(classroom)
 
     complaint = Complaint(
         id_user=current_user.id,
@@ -269,7 +303,7 @@ async def create_complaint(
         description=description_clean,
         category=category,
         id_building=id_building,
-        classroom=classroom,
+        classroom=classroom_clean,
         status=ComplaintStatus.PENDING,
     )
     db.add(complaint)
