@@ -197,15 +197,16 @@ async def create_complaint(
                 detail="Las sugerencias no pueden incluir ubicación",
             )
 
+    is_suggestion = type == ComplaintType.SUGGESTION
     complaint = Complaint(
         id_user=current_user.id,
         type=type,
         title=title_clean,
         description=description_clean,
         category=category,
-        id_building=id_building,
-        classroom=classroom,
-        status=ComplaintStatus.PENDING if type != ComplaintType.SUGGESTION else None,
+        id_building=None if is_suggestion else id_building,
+        classroom=None if is_suggestion else classroom,
+        status=None if is_suggestion else ComplaintStatus.PENDING,
     )
     db.add(complaint)
     db.flush()
@@ -322,7 +323,11 @@ async def get_all_complaints(
         select(Complaint.status, func.count().label("cnt")).group_by(Complaint.status)
     ).all()
 
-    stats_map: dict[str, int] = {row.status.value: row.cnt for row in stats_rows}
+    stats_map: dict[str, int] = {
+        row.status.value: row.cnt
+        for row in stats_rows
+        if row.status is not None
+    }
     total = sum(stats_map.values())
 
     rows = (
@@ -508,6 +513,12 @@ async def update_complaint(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="No tienes acceso a esta queja",
+        )
+
+    if complaint.type == ComplaintType.SUGGESTION:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Las sugerencias no pueden ser editadas",
         )
 
     if complaint.status != ComplaintStatus.PENDING:
