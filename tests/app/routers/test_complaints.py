@@ -232,7 +232,7 @@ def test_create_complaint_no_images(db, clear_dependency_overrides):
     assert len(response.json()["images"]) == 0
 
 
-def test_create_suggestion_rejects_images(db, clear_dependency_overrides, monkeypatch):
+def test_create_suggestion_rejects_images(db, clear_dependency_overrides):
     user = _create_user(
         db, RoleName.USER, "suggestion1@itmexicali.edu.mx", "sub-suggestion-1"
     )
@@ -538,7 +538,7 @@ def test_upload_evidence_for_suggestion_is_rejected(db, clear_dependency_overrid
         description="Detalle de sugerencia",
         category=ComplaintCategory.GENERAL,
         type=ComplaintType.SUGGESTION,
-        status=ComplaintStatus.PENDING,
+        status=None,
     )
     db.add(complaint)
     db.commit()
@@ -575,7 +575,7 @@ def test_update_suggestion_status_is_rejected(db, clear_dependency_overrides):
         description="Detalle de sugerencia",
         category=ComplaintCategory.GENERAL,
         type=ComplaintType.SUGGESTION,
-        status=ComplaintStatus.PENDING,
+        status=None,
     )
     db.add(complaint)
     db.commit()
