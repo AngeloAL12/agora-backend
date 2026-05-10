@@ -273,7 +273,9 @@ def get_club_posts_service(
                 "author": {
                     "id": post.author.id,
                     "name": post.author.name,
-                    "photo": post.author.photo,
+                    "photo": _public_url(post.author.photo)
+                    if post.author.photo
+                    else None,
                 },
                 "created_at": post.created_at,
             }
