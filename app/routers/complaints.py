@@ -284,6 +284,13 @@ async def create_complaint(
     Crea una nueva queja con datos multipart/form-data.
     El campo images es opcional (0..3 archivos).
     """
+    # Bloqueo de imágenes en Sugerencias
+    if type == ComplaintType.SUGGESTION and images:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Las sugerencias no pueden incluir imágenes",
+        )
+
     if images and len(images) > 3:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -296,15 +303,24 @@ async def create_complaint(
     )
     classroom_clean = _normalize_optional_text(classroom)
 
+    # Las sugerencias no deben tener ubicación ni aceptar datos de edificio/salón.
+    if type == ComplaintType.SUGGESTION:
+        if id_building is not None or (classroom is not None and classroom.strip()):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Las sugerencias no pueden incluir ubicación",
+            )
+
+    is_suggestion = type == ComplaintType.SUGGESTION
     complaint = Complaint(
         id_user=current_user.id,
         type=type,
         title=title_clean,
         description=description_clean,
         category=category,
-        id_building=id_building,
-        classroom=classroom_clean,
-        status=ComplaintStatus.PENDING,
+        id_building=None if is_suggestion else id_building,
+        classroom=None if is_suggestion else classroom_clean,
+        status=None if is_suggestion else ComplaintStatus.PENDING,
     )
     db.add(complaint)
     db.flush()
@@ -318,14 +334,15 @@ async def create_complaint(
             )
             db.add(ComplaintImage(id_complaint=complaint.id, url=object_key))
 
-    db.add(
-        ComplaintStatusHistory(
-            id_complaint=complaint.id,
-            id_user=current_user.id,
-            old_status=None,
-            new_status=ComplaintStatus.PENDING,
+    if type != ComplaintType.SUGGESTION:
+        db.add(
+            ComplaintStatusHistory(
+                id_complaint=complaint.id,
+                id_user=current_user.id,
+                old_status=None,
+                new_status=ComplaintStatus.PENDING,
+            )
         )
-    )
     db.commit()
 
     background_tasks.add_task(
@@ -421,8 +438,10 @@ async def get_all_complaints(
         select(Complaint.status, func.count().label("cnt")).group_by(Complaint.status)
     ).all()
 
-    stats_map: dict[str, int] = {row.status.value: row.cnt for row in stats_rows}
-    total = sum(stats_map.values())
+    stats_map: dict[str, int] = {
+        row.status.value: row.cnt for row in stats_rows if row.status is not None
+    }
+    total = db.scalar(select(func.count()).select_from(Complaint))
 
     rows = (
         db.execute(
@@ -471,6 +490,13 @@ async def upload_complaint_evidence(
             detail="Queja no encontrada",
         )
 
+    # Bloqueo de evidencia para Sugerencias
+    if complaint.type == ComplaintType.SUGGESTION:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Las sugerencias no pueden tener evidencia",
+        )
+
     bucket_name = settings.R2_BUCKET_PRIVATE
     prefix = f"complaints/{complaint_id}/evidence"
 
@@ -509,6 +535,12 @@ async def update_complaint_status(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Queja no encontrada",
+        )
+
+    if complaint.type == ComplaintType.SUGGESTION:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Las sugerencias no tienen flujo de estados",
         )
 
     _validate_status_transition(complaint.status, status_update.status)
@@ -599,6 +631,12 @@ async def update_complaint(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="No tienes acceso a esta queja",
+        )
+
+    if complaint.type == ComplaintType.SUGGESTION:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Las sugerencias no pueden ser editadas",
         )
 
     if complaint.status != ComplaintStatus.PENDING:

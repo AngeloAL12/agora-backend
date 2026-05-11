@@ -41,7 +41,7 @@ class ComplaintResponse(BaseModel):
     category: ComplaintCategory
     id_building: int | None = None
     classroom: str | None = None
-    status: ComplaintStatus
+    status: ComplaintStatus | None
     has_appealed: bool
     created_at: datetime | Any = Field(..., description="Creation timestamp")
     images: list[ComplaintImageResponse]
@@ -54,7 +54,7 @@ class ComplaintListItemResponse(BaseModel):
     id: int
     type: ComplaintType
     title: str
-    status: ComplaintStatus
+    status: ComplaintStatus | None
     created_at: datetime | Any = Field(..., description="Creation timestamp")
 
     model_config = ConfigDict(from_attributes=True)

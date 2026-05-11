@@ -55,8 +55,8 @@ class Complaint(Base):
         ForeignKey("building.id", ondelete="SET NULL"), nullable=True
     )
     classroom: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    status: Mapped[ComplaintStatus] = mapped_column(
-        SQLAlchemyEnum(ComplaintStatus), default=ComplaintStatus.PENDING, nullable=False
+    status: Mapped[ComplaintStatus | None] = mapped_column(
+        SQLAlchemyEnum(ComplaintStatus), default=ComplaintStatus.PENDING, nullable=True
     )
     has_appealed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 

@@ -5,7 +5,12 @@ from app.core.security import get_current_user
 from app.main import app
 from app.models.auth.role import Role
 from app.models.auth.user import User
-from app.models.complaint.complaint import Complaint, ComplaintCategory, ComplaintStatus
+from app.models.complaint.complaint import (
+    Complaint,
+    ComplaintCategory,
+    ComplaintStatus,
+    ComplaintType,
+)
 from app.models.complaint.complaint_evidence import ComplaintEvidence
 from app.models.notification.notification import NotificationEventType
 from app.routers.complaints import (
@@ -248,6 +253,51 @@ def test_create_complaint_form_urlencoded_no_images_is_accepted(
     assert response.json()["title"] == "Sin Imagen URL Encoded"
     assert response.json()["status"] == ComplaintStatus.PENDING
     assert len(response.json()["images"]) == 0
+
+
+def test_create_suggestion_rejects_images(db, clear_dependency_overrides):
+    user = _create_user(
+        db, RoleName.USER, "suggestion1@itmexicali.edu.mx", "sub-suggestion-1"
+    )
+    _override_current_user(user.id)
+
+    client = TestClient(app)
+    response = client.post(
+        "/complaints",
+        data={
+            "title": "Nueva sugerencia",
+            "description": "Quiero sugerir un cambio",
+            "category": "GENERAL",
+            "type": "SUGGESTION",
+        },
+        files=[("images", ("evidence.png", b"image-bytes", "image/png"))],
+    )
+
+    assert response.status_code == 400
+    assert "sugerencias" in response.json()["detail"].lower()
+
+
+def test_create_suggestion_rejects_location_data(db, clear_dependency_overrides):
+    user = _create_user(
+        db, RoleName.USER, "suggestion2@itmexicali.edu.mx", "sub-suggestion-2"
+    )
+    _override_current_user(user.id)
+
+    client = TestClient(app)
+    response = client.post(
+        "/complaints",
+        data={
+            "title": "Sugerencia sin ubicación",
+            "description": "Esta sugerencia no debe aceptar edificio o salón",
+            "category": "GENERAL",
+            "type": "SUGGESTION",
+            "id_building": "1",
+            "classroom": "A101",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "ubicación" in response.json()["detail"].lower()
 
 
 def test_create_complaint_with_too_many_images(
@@ -636,6 +686,105 @@ def test_get_my_complaint_detail_includes_all_evidences(
         f"https://cdn.example.com/complaints/{complaint.id}/evidence/ev1.png",
         f"https://cdn.example.com/complaints/{complaint.id}/evidence/ev2.png",
     }
+
+
+def test_upload_evidence_for_suggestion_is_rejected(db, clear_dependency_overrides):
+    staff = _create_user(
+        db, RoleName.STAFF, "staff_suggestion@itmexicali.edu.mx", "staff-suggestion"
+    )
+    owner = _create_user(
+        db, RoleName.USER, "owner_suggestion@itmexicali.edu.mx", "owner-suggestion"
+    )
+    _override_current_user_with_role(RoleName.STAFF, staff.id)
+
+    complaint = Complaint(
+        id_user=owner.id,
+        title="Sugerencia",
+        description="Detalle de sugerencia",
+        category=ComplaintCategory.GENERAL,
+        type=ComplaintType.SUGGESTION,
+        status=None,
+    )
+    db.add(complaint)
+    db.commit()
+    db.refresh(complaint)
+
+    client = TestClient(app)
+    response = client.post(
+        f"/complaints/{complaint.id}/evidence",
+        files=[("file", ("evidence.png", b"evidence", "image/png"))],
+    )
+
+    assert response.status_code == 400
+    assert "evidencia" in response.json()["detail"].lower()
+
+
+def test_update_suggestion_status_is_rejected(db, clear_dependency_overrides):
+    staff = _create_user(
+        db,
+        RoleName.STAFF,
+        "staff_suggestion_status@itmexicali.edu.mx",
+        "staff-suggestion-status",
+    )
+    owner = _create_user(
+        db,
+        RoleName.USER,
+        "owner_suggestion_status@itmexicali.edu.mx",
+        "owner-suggestion-status",
+    )
+    _override_current_user_with_role(RoleName.STAFF, staff.id)
+
+    complaint = Complaint(
+        id_user=owner.id,
+        title="Sugerencia status",
+        description="Detalle de sugerencia",
+        category=ComplaintCategory.GENERAL,
+        type=ComplaintType.SUGGESTION,
+        status=None,
+    )
+    db.add(complaint)
+    db.commit()
+    db.refresh(complaint)
+
+    client = TestClient(app)
+    response = client.patch(
+        f"/complaints/{complaint.id}/status",
+        json={"status": "IN_PROGRESS"},
+    )
+
+    assert response.status_code == 400
+    assert "sugerencias" in response.json()["detail"].lower()
+
+
+def test_update_suggestion_is_rejected(db, clear_dependency_overrides):
+    user = _create_user(
+        db,
+        RoleName.USER,
+        "owner_suggestion_edit@itmexicali.edu.mx",
+        "owner-suggestion-edit",
+    )
+    _override_current_user(user.id)
+
+    complaint = Complaint(
+        id_user=user.id,
+        title="Sugerencia editable?",
+        description="Detalle de sugerencia",
+        category=ComplaintCategory.GENERAL,
+        type=ComplaintType.SUGGESTION,
+        status=None,
+    )
+    db.add(complaint)
+    db.commit()
+    db.refresh(complaint)
+
+    client = TestClient(app)
+    response = client.patch(
+        f"/complaints/{complaint.id}",
+        json={"title": "Nuevo titulo"},
+    )
+
+    assert response.status_code == 400
+    assert "sugerencias" in response.json()["detail"].lower()
 
 
 def test_update_complaint_status_not_found(db, clear_dependency_overrides):
