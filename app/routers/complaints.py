@@ -6,6 +6,7 @@ from fastapi import (
     Form,
     HTTPException,
     Query,
+    Request,
     UploadFile,
     status,
 )
@@ -42,6 +43,112 @@ from app.schemas.complaint import (
 from app.services.storage_service import storage_service
 
 router = APIRouter(prefix="/complaints", tags=["complaints"])
+
+MAX_TITLE_LENGTH = 255
+MAX_DESCRIPTION_LENGTH = 1000
+
+_FINAL_STATUSES = {ComplaintStatus.RESOLVED, ComplaintStatus.REJECTED}
+_ALLOWED_TRANSITIONS: dict[ComplaintStatus, set[ComplaintStatus]] = {
+    ComplaintStatus.PENDING: {ComplaintStatus.IN_PROGRESS, ComplaintStatus.REJECTED},
+    ComplaintStatus.IN_PROGRESS: {ComplaintStatus.RESOLVED, ComplaintStatus.REJECTED},
+}
+
+
+def _normalize_optional_text(value: str | None) -> str | None:
+    if value is None:
+        return None
+
+    cleaned = value.strip()
+    return cleaned or None
+
+
+def _validate_create_complaint_text(title: str, description: str) -> tuple[str, str]:
+    title_clean = title.strip()
+    description_clean = description.strip()
+
+    if not title_clean:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El título no puede estar vacío",
+        )
+
+    if not description_clean:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="La descripción no puede estar vacía",
+        )
+
+    if len(title_clean) > MAX_TITLE_LENGTH:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="El título no puede exceder 255 caracteres",
+        )
+
+    if len(description_clean) > MAX_DESCRIPTION_LENGTH:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="La descripción no puede exceder 1000 caracteres",
+        )
+
+    return title_clean, description_clean
+
+
+def _ensure_any_content_type(
+    request: Request, expected_prefixes: tuple[str, ...]
+) -> None:
+    content_type = request.headers.get("content-type", "").lower()
+    if any(content_type.startswith(prefix) for prefix in expected_prefixes):
+        return
+
+    if len(expected_prefixes) == 1:
+        expected = expected_prefixes[0]
+    else:
+        expected = ", ".join(expected_prefixes[:-1]) + " o " + expected_prefixes[-1]
+    raise HTTPException(
+        status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+        detail=f"Content-Type inválido. Se esperaba {expected}.",
+    )
+
+
+def _require_multipart_content_type(request: Request) -> None:
+    _ensure_any_content_type(request, ("multipart/form-data",))
+
+
+def _require_complaint_create_content_type(request: Request) -> None:
+    _ensure_any_content_type(
+        request,
+        ("multipart/form-data", "application/x-www-form-urlencoded"),
+    )
+
+
+def _validate_status_transition(
+    current_status: ComplaintStatus,
+    new_status: ComplaintStatus,
+) -> None:
+    if new_status == current_status:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"La queja ya se encuentra en estado {current_status.value}.",
+        )
+
+    if current_status in _FINAL_STATUSES:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "No se puede cambiar el estado de una queja finalizada "
+                f"({current_status.value})."
+            ),
+        )
+
+    allowed_next = _ALLOWED_TRANSITIONS.get(current_status, set())
+    if new_status not in allowed_next:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"Transición de estado inválida: {current_status.value} -> "
+                f"{new_status.value}."
+            ),
+        )
 
 
 def _notify_complaint_submitted(
@@ -126,6 +233,19 @@ async def _serialize_complaint(complaint: Complaint) -> ComplaintResponse:
             }
         )
 
+    evidence_responses = []
+    for evidence in complaint.evidences:
+        evidence_responses.append(
+            {
+                "id": evidence.id,
+                "url": await storage_service.get_presigned_url(
+                    settings.R2_BUCKET_PRIVATE,
+                    evidence.url,
+                ),
+                "created_at": evidence.created_at,
+            }
+        )
+
     return ComplaintResponse(
         id=complaint.id,
         type=complaint.type,
@@ -138,6 +258,7 @@ async def _serialize_complaint(complaint: Complaint) -> ComplaintResponse:
         has_appealed=complaint.has_appealed,
         created_at=complaint.created_at,
         images=image_responses,
+        evidences=evidence_responses,
     )
 
 
@@ -145,6 +266,7 @@ async def _serialize_complaint(complaint: Complaint) -> ComplaintResponse:
     "",
     response_model=ComplaintResponse,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(_require_complaint_create_content_type)],
 )
 async def create_complaint(
     background_tasks: BackgroundTasks,
@@ -175,19 +297,11 @@ async def create_complaint(
             detail="Máximo 3 imágenes permitidas",
         )
 
-    title_clean = title.strip()
-    description_clean = description.strip()
-
-    if not title_clean:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="El título no puede estar vacío",
-        )
-    if not description_clean:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="La descripción no puede estar vacía",
-        )
+    title_clean, description_clean = _validate_create_complaint_text(
+        title=title,
+        description=description,
+    )
+    classroom_clean = _normalize_optional_text(classroom)
 
     # Las sugerencias no deben tener ubicación ni aceptar datos de edificio/salón.
     if type == ComplaintType.SUGGESTION:
@@ -205,7 +319,7 @@ async def create_complaint(
         description=description_clean,
         category=category,
         id_building=None if is_suggestion else id_building,
-        classroom=None if is_suggestion else classroom,
+        classroom=None if is_suggestion else classroom_clean,
         status=None if is_suggestion else ComplaintStatus.PENDING,
     )
     db.add(complaint)
@@ -240,7 +354,7 @@ async def create_complaint(
 
     complaint = db.execute(
         select(Complaint)
-        .options(selectinload(Complaint.images))
+        .options(selectinload(Complaint.images), selectinload(Complaint.evidences))
         .where(Complaint.id == complaint.id)
     ).scalar_one()
 
@@ -282,7 +396,7 @@ async def get_my_complaint_detail(
 ):
     complaint = db.execute(
         select(Complaint)
-        .options(selectinload(Complaint.images))
+        .options(selectinload(Complaint.images), selectinload(Complaint.evidences))
         .where(Complaint.id == complaint_id)
     ).scalar_one_or_none()
 
@@ -292,7 +406,8 @@ async def get_my_complaint_detail(
             detail="Queja no encontrada",
         )
 
-    if complaint.id_user != current_user.id:
+    is_staff_or_admin = current_user.role in {RoleName.STAFF, RoleName.ADMIN}
+    if complaint.id_user != current_user.id and not is_staff_or_admin:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="No tienes acceso a esta queja",
@@ -356,7 +471,10 @@ async def get_all_complaints(
     )
 
 
-@router.post("/{complaint_id}/evidence")
+@router.post(
+    "/{complaint_id}/evidence",
+    dependencies=[Depends(_require_multipart_content_type)],
+)
 async def upload_complaint_evidence(
     complaint_id: int,
     file: UploadFile = File(...),
@@ -424,6 +542,8 @@ async def update_complaint_status(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Las sugerencias no tienen flujo de estados",
         )
+
+    _validate_status_transition(complaint.status, status_update.status)
 
     if status_update.status == ComplaintStatus.RESOLVED:
         if not complaint.evidences:
@@ -497,7 +617,7 @@ async def update_complaint(
 ):
     complaint = db.execute(
         select(Complaint)
-        .options(selectinload(Complaint.images))
+        .options(selectinload(Complaint.images), selectinload(Complaint.evidences))
         .where(Complaint.id == complaint_id)
     ).scalar_one_or_none()
 

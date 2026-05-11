@@ -9,11 +9,23 @@ from app.services.storage_service import StorageService
 
 
 def make_upload_file(
-    filename: str = "test.jpg", content_type: str = "image/jpeg"
-) -> UploadFile:
+    filename="photo.png",
+    content_type="image/png",
+    content=None,
+):
+    if content is None:
+        if content_type == "image/png":
+            content = b"\x89PNG\r\n\x1a\nfakepngdata"
+        elif content_type in ["image/jpeg", "image/jpg"]:
+            content = b"\xff\xd8\xff\xe0fakejpegdata"
+        else:
+            content = b"fake-file"
+
+    file = BytesIO(content)
+
     return UploadFile(
         filename=filename,
-        file=BytesIO(b"fake-image-content"),
+        file=file,
         headers={"content-type": content_type},
     )
 
@@ -67,26 +79,25 @@ async def test_upload_file_uses_correct_bucket_and_content_type(
     client.upload_fileobj = AsyncMock(return_value=None)
 
     with patch.object(service._session, "client", return_value=cm):
-        file = make_upload_file("doc.pdf", "application/pdf")
+        file = make_upload_file("photo.jpg", "image/jpeg")
         await service.upload_file(file, "target-bucket", "docs")
 
-    _, call_kwargs = client.upload_fileobj.call_args
     assert client.upload_fileobj.call_args[0][1] == "target-bucket"
     assert (
-        client.upload_fileobj.call_args[1]["ExtraArgs"]["ContentType"]
-        == "application/pdf"
+        client.upload_fileobj.call_args[1]["ExtraArgs"]["ContentType"] == "image/jpeg"
     )
 
 
-async def test_upload_file_no_extension_defaults_to_bin(service, mock_s3_client):
+async def test_upload_file_rejects_invalid_extension(service, mock_s3_client):
     cm, client = mock_s3_client
-    client.upload_fileobj = AsyncMock(return_value=None)
 
     with patch.object(service._session, "client", return_value=cm):
-        file = make_upload_file("noextension", "application/octet-stream")
-        result = await service.upload_file(file, "bucket", "prefix")
+        file = make_upload_file("doc.pdf", "application/pdf")
 
-    assert result.endswith(".bin")
+        with pytest.raises(HTTPException) as exc_info:
+            await service.upload_file(file, "bucket", "prefix")
+
+    assert exc_info.value.status_code == 422
 
 
 async def test_upload_file_raises_http_exception_on_client_error(
