@@ -326,7 +326,7 @@ async def get_all_complaints(
     stats_map: dict[str, int] = {
         row.status.value: row.cnt for row in stats_rows if row.status is not None
     }
-    total = sum(stats_map.values())
+    total = db.scalar(select(func.count()).select_from(Complaint))
 
     rows = (
         db.execute(

@@ -591,6 +591,37 @@ def test_update_suggestion_status_is_rejected(db, clear_dependency_overrides):
     assert "sugerencias" in response.json()["detail"].lower()
 
 
+def test_update_suggestion_is_rejected(db, clear_dependency_overrides):
+    user = _create_user(
+        db,
+        RoleName.USER,
+        "owner_suggestion_edit@itmexicali.edu.mx",
+        "owner-suggestion-edit",
+    )
+    _override_current_user(user.id)
+
+    complaint = Complaint(
+        id_user=user.id,
+        title="Sugerencia editable?",
+        description="Detalle de sugerencia",
+        category=ComplaintCategory.GENERAL,
+        type=ComplaintType.SUGGESTION,
+        status=None,
+    )
+    db.add(complaint)
+    db.commit()
+    db.refresh(complaint)
+
+    client = TestClient(app)
+    response = client.patch(
+        f"/complaints/{complaint.id}",
+        json={"title": "Nuevo titulo"},
+    )
+
+    assert response.status_code == 400
+    assert "sugerencias" in response.json()["detail"].lower()
+
+
 def test_update_complaint_status_not_found(db, clear_dependency_overrides):
     staff = _create_user(
         db,
