@@ -39,7 +39,9 @@ class Club(Base):
     members: Mapped[list["ClubMember"]] = relationship(
         back_populates="club", passive_deletes=True
     )
-    messages: Mapped[list["ClubMessage"]] = relationship(back_populates="club")
+    messages: Mapped[list["ClubMessage"]] = relationship(
+        back_populates="club", passive_deletes=True
+    )
     join_requests: Mapped[list["ClubJoinRequest"]] = relationship(
         back_populates="club", passive_deletes=True
     )
