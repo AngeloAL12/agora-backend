@@ -264,7 +264,9 @@ def get_club_posts_service(
                         "user": {
                             "id": comment.user.id,
                             "name": comment.user.name,
-                            "photo": comment.user.photo,
+                            "photo": _public_url(comment.user.photo)
+                            if comment.user.photo
+                            else None,
                         },
                     }
                     for comment in post.comments[:3]

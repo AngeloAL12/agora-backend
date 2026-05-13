@@ -1021,7 +1021,7 @@ def get_post_comments(
             "user": {
                 "id": comment.user.id,
                 "name": comment.user.name,
-                "photo": comment.user.photo,
+                "photo": _build_image_url(comment.user.photo),
             },
         }
         for comment in comments
@@ -1078,7 +1078,7 @@ def create_post_comment(
         "user": {
             "id": comment.user.id,
             "name": comment.user.name,
-            "photo": comment.user.photo,
+            "photo": _build_image_url(comment.user.photo),
         },
     }
 
