@@ -540,7 +540,7 @@ async def club_chat(
 async def create_club(
     name: Annotated[str, Form(...)],
     description: Annotated[str, Form(...)],
-    id_category: Annotated[int, Form(...)],
+    id_category: Annotated[int | None, Form()] = None,
     is_private: Annotated[bool, Form()] = False,
     profile_image: Annotated[UploadFile | None, File()] = None,
     cover_image: Annotated[UploadFile | None, File()] = None,
@@ -554,9 +554,10 @@ async def create_club(
     if existing:
         raise HTTPException(status_code=400, detail="Nombre de club ya existe")
 
-    category = db.query(ClubCategory).filter(ClubCategory.id == id_category).first()
-    if not category:
-        raise HTTPException(status_code=400, detail="Categoría inválida")
+    if id_category is not None:
+        category = db.query(ClubCategory).filter(ClubCategory.id == id_category).first()
+        if not category:
+            raise HTTPException(status_code=400, detail="Categoría inválida")
 
     club = Club(
         name=clean_name,

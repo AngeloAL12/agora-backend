@@ -18,7 +18,7 @@ class ClubResponse(BaseModel):
     profile_image: str | None
     cover_image: str | None
 
-    id_category: int
+    id_category: int | None
     id_leader: int
     is_private: bool
     created_at: datetime
