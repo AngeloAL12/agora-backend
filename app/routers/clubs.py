@@ -609,6 +609,7 @@ async def update_club(
     name: Annotated[str | None, Form()] = None,
     description: Annotated[str | None, Form()] = None,
     id_category: Annotated[int | None, Form()] = None,
+    is_private: Annotated[bool | None, Form()] = None,
     profile_image: Annotated[UploadFile | None, File()] = None,
     cover_image: Annotated[UploadFile | None, File()] = None,
     db: Session = Depends(get_db),
@@ -637,6 +638,9 @@ async def update_club(
         if not category:
             raise HTTPException(400, "Categoría inválida")
         club.id_category = id_category
+
+    if is_private is not None:
+        club.is_private = is_private
 
     if profile_image is not None and profile_image.filename:
         if club.profile_image is not None:
