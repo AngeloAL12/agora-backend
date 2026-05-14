@@ -23,8 +23,8 @@ class Club(Base):
     profile_image: Mapped[str | None] = mapped_column(String(500), nullable=True)
     cover_image: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
-    id_category: Mapped[int] = mapped_column(
-        ForeignKey("club_category.id"), nullable=False
+    id_category: Mapped[int | None] = mapped_column(
+        ForeignKey("club_category.id"), nullable=True
     )
     id_leader: Mapped[int] = mapped_column(ForeignKey("user.id"), nullable=False)
     is_private: Mapped[bool] = mapped_column(
