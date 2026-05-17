@@ -1232,8 +1232,9 @@ def test_get_club_messages_paginated(db):
     assert response.status_code == 200
     data = response.json()
     assert len(data) == 2
-    assert data[0]["content"] == "mensaje-1"
-    assert data[1]["content"] == "mensaje-2"
+    # page=1 returns the most recent messages in chronological order
+    assert data[0]["content"] == "mensaje-2"
+    assert data[1]["content"] == "mensaje-3"
     assert data[0]["user"]["name"] == "User 1"
 
 
