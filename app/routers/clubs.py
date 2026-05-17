@@ -422,7 +422,7 @@ def get_club_messages(
         .all()
     )
 
-    return [ClubMessageResponse.model_validate(item) for item in messages]
+    return [_build_message_payload(item) for item in messages]
 
 
 @router.websocket("/{club_id}/chat")
