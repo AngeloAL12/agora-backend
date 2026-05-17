@@ -414,7 +414,7 @@ def get_club_messages(
             select(ClubMessage)
             .options(joinedload(ClubMessage.user))
             .where(ClubMessage.id_club == club_id)
-            .order_by(ClubMessage.created_at.asc(), ClubMessage.id.asc())
+            .order_by(ClubMessage.created_at.desc(), ClubMessage.id.desc())
             .offset((page - 1) * limit)
             .limit(limit)
         )
@@ -422,7 +422,7 @@ def get_club_messages(
         .all()
     )
 
-    return [_build_message_payload(item) for item in messages]
+    return [_build_message_payload(item) for item in reversed(messages)]
 
 
 @router.websocket("/{club_id}/chat")
