@@ -250,14 +250,11 @@ def _create_message_and_notify_offline(
         raise ValueError("Club o usuario no encontrado")
 
     try:
-        logger.info(f"Creating message in club {club.id} from user {sender.id}")
         message = ClubMessage(id_club=club.id, id_user=sender.id, content=content)
         db.add(message)
         db.commit()
         db.refresh(message)
-        logger.info(f"Message {message.id} committed successfully")
-    except Exception as e:
-        logger.error(f"Failed to create message: {e}", exc_info=True)
+    except Exception:
         db.rollback()
         raise
 
@@ -520,10 +517,9 @@ async def club_chat(
                     content=content,
                     connected_user_ids=connected_ids,
                 )
-                logger.info(f"Message created in club {club_id}: {response_payload}")
                 await redis_chat_manager.publish_message(club_id, response_payload)
             except Exception as e:
-                logger.error(f"Error al procesar mensaje: {e}", exc_info=True)
+                logger.error(f"Error al procesar mensaje: {e}")
                 await websocket.send_json({"detail": "Error procesando mensaje"})
 
     except WebSocketDisconnect:
