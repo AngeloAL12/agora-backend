@@ -206,7 +206,7 @@ def _build_message_payload(message: ClubMessage) -> dict:
         user=ClubMessageUserResponse(
             id=message.user.id,
             name=message.user.name,
-            photo=message.user.photo,
+            photo=_build_image_url(message.user.photo),
         ),
     ).model_dump(mode="json")
 
