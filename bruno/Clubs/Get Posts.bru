@@ -1,11 +1,11 @@
 meta {
-  name: Get club messages
+  name: Get Posts
   type: http
-  seq: 4
+  seq: 21
 }
 
 get {
-  url: {{base_url}}/clubs/{{club_id}}/messages?page={{page}}&limit={{limit}}
+  url: {{base_url}}/clubs/{{club_id}}/posts/{{post_id}}
   body: none
   auth: bearer
 }
@@ -15,9 +15,8 @@ auth:bearer {
 }
 
 vars:pre-request {
-  club_id: 33
-  page: 2
-  limit: 50
+  club_id: 32
+  post_id: 1
 }
 
 settings {

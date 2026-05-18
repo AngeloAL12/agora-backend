@@ -102,6 +102,10 @@ class StorageService:
                 detail="No se pudo eliminar el archivo.",
             ) from e
 
+    def get_public_url(self, object_key: str) -> str:
+        base = (settings.R2_PUBLIC_URL or self._endpoint_url).rstrip("/")
+        return f"{base}/{object_key}"
+
     async def get_presigned_url(
         self, bucket_name: str, object_key: str, expiration: int = 3600
     ) -> str:
