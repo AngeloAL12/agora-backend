@@ -20,7 +20,7 @@ router = APIRouter(prefix="/map", tags=["map"])
 
 
 def _public_url(bucket_name: str, object_key: str) -> str:
-    encoded_object_key = quote(object_key.lstrip('/'), safe='/')
+    encoded_object_key = quote(object_key.lstrip("/"), safe="/")
     if settings.R2_PUBLIC_URL:
         return f"{settings.R2_PUBLIC_URL.rstrip('/')}/{encoded_object_key}"
 
@@ -63,11 +63,15 @@ async def get_buildings(
 ):
     _ = current_user
 
-    buildings = db.execute(
-        select(Building)
-        .options(selectinload(Building.images), selectinload(Building.images_360))
-        .order_by(Building.id)
-    ).scalars().all()
+    buildings = (
+        db.execute(
+            select(Building)
+            .options(selectinload(Building.images), selectinload(Building.images_360))
+            .order_by(Building.id)
+        )
+        .scalars()
+        .all()
+    )
 
     return [_build_building_response(building) for building in buildings]
 
