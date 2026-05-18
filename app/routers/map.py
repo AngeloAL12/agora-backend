@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
+from urllib.parse import quote
 
 from app.core.config import settings
-from pathlib import PurePosixPath
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.campus import Building, PointOfInterest
@@ -19,17 +19,18 @@ router = APIRouter(prefix="/map", tags=["map"])
 
 
 def _public_url(bucket_name: str, object_key: str) -> str:
+    encoded_object_key = quote(object_key.lstrip('/'), safe='/')
     if settings.R2_PUBLIC_URL:
-        return f"{settings.R2_PUBLIC_URL.rstrip('/')}/{object_key.lstrip('/')}"
+        return f"{settings.R2_PUBLIC_URL.rstrip('/')}/{encoded_object_key}"
 
-    return f"{settings.R2_ENDPOINT.rstrip('/')}/{bucket_name}/{object_key.lstrip('/')}"
+    return f"{settings.R2_ENDPOINT.rstrip('/')}/{bucket_name}/{encoded_object_key}"
 
 
 def _build_building_response(building: Building) -> BuildingDetailResponse:
     images = [
         BuildingMediaResponse(
             id=image.id,
-            url=PurePosixPath(image.url).name,
+            url=_public_url(settings.R2_BUCKET_PUBLIC, image.url),
             floor=image.floor,
         )
         for image in sorted(building.images, key=lambda image: image.floor)
@@ -38,7 +39,7 @@ def _build_building_response(building: Building) -> BuildingDetailResponse:
     views_360 = [
         BuildingMediaResponse(
             id=view.id,
-            url=PurePosixPath(view.url).name,
+            url=_public_url(settings.R2_BUCKET_PUBLIC, view.url),
             floor=view.floor,
         )
         for view in sorted(building.images_360, key=lambda view: view.floor)
@@ -119,7 +120,7 @@ async def get_point_of_interest_detail(
     images: list[PointMediaResponse] = [
         PointMediaResponse(
             id=image.id,
-            url=PurePosixPath(image.url).name,
+            url=_public_url(settings.R2_BUCKET_PUBLIC, image.url),
         )
         for image in point.images
     ]
@@ -127,7 +128,7 @@ async def get_point_of_interest_detail(
     views_360: list[PointMediaResponse] = [
         PointMediaResponse(
             id=view.id,
-            url=PurePosixPath(view.url).name,
+            url=_public_url(settings.R2_BUCKET_PUBLIC, view.url),
         )
         for view in point.images_360
     ]
