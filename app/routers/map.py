@@ -1,3 +1,5 @@
+from urllib.parse import quote
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
@@ -13,9 +15,65 @@ from app.schemas.map import (
     PointMediaResponse,
     PointOfInterestDetailResponse,
 )
-from app.services.storage_service import storage_service
 
 router = APIRouter(prefix="/map", tags=["map"])
+
+
+def _public_url(bucket_name: str, object_key: str) -> str:
+    encoded_object_key = quote(object_key.lstrip("/"), safe="/")
+    if settings.R2_PUBLIC_URL:
+        return f"{settings.R2_PUBLIC_URL.rstrip('/')}/{encoded_object_key}"
+
+    return f"{settings.R2_ENDPOINT.rstrip('/')}/{bucket_name}/{encoded_object_key}"
+
+
+def _build_building_response(building: Building) -> BuildingDetailResponse:
+    images = [
+        BuildingMediaResponse(
+            id=image.id,
+            url=_public_url(settings.R2_BUCKET_PUBLIC, image.url),
+            floor=image.floor,
+        )
+        for image in sorted(building.images, key=lambda image: image.floor)
+    ]
+
+    views_360 = [
+        BuildingMediaResponse(
+            id=view.id,
+            url=_public_url(settings.R2_BUCKET_PUBLIC, view.url),
+            floor=view.floor,
+        )
+        for view in sorted(building.images_360, key=lambda view: view.floor)
+    ]
+
+    return BuildingDetailResponse(
+        id=building.id,
+        name=building.name,
+        description=building.description,
+        images=images,
+        views_360=views_360,
+        created_at=building.created_at,
+    )
+
+
+@router.get("/buildings", response_model=list[BuildingDetailResponse])
+async def get_buildings(
+    current_user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _ = current_user
+
+    buildings = (
+        db.execute(
+            select(Building)
+            .options(selectinload(Building.images), selectinload(Building.images_360))
+            .order_by(Building.id)
+        )
+        .scalars()
+        .all()
+    )
+
+    return [_build_building_response(building) for building in buildings]
 
 
 @router.get("/buildings/{building_id}", response_model=BuildingDetailResponse)
@@ -38,42 +96,7 @@ async def get_building_detail(
             detail="Edificio no encontrado",
         )
 
-    images: list[BuildingMediaResponse] = []
-    for image in building.images:
-        images.append(
-            BuildingMediaResponse(
-                id=image.id,
-                url=await storage_service.get_presigned_url(
-                    settings.R2_BUCKET_PUBLIC,
-                    image.url,
-                ),
-                floor=image.floor,
-            )
-        )
-    images.sort(key=lambda x: x.floor)
-
-    views_360: list[BuildingMediaResponse] = []
-    for view in building.images_360:
-        views_360.append(
-            BuildingMediaResponse(
-                id=view.id,
-                url=await storage_service.get_presigned_url(
-                    settings.R2_BUCKET_PUBLIC,
-                    view.url,
-                ),
-                floor=view.floor,
-            )
-        )
-    views_360.sort(key=lambda x: x.floor)
-
-    return BuildingDetailResponse(
-        id=building.id,
-        name=building.name,
-        description=building.description,
-        images=images,
-        views_360=views_360,
-        created_at=building.created_at,
-    )
+    return _build_building_response(building)
 
 
 @router.get("/points/{point_id}", response_model=PointOfInterestDetailResponse)
@@ -99,29 +122,21 @@ async def get_point_of_interest_detail(
             detail="Punto de interés no encontrado",
         )
 
-    images: list[PointMediaResponse] = []
-    for image in point.images:
-        images.append(
-            PointMediaResponse(
-                id=image.id,
-                url=await storage_service.get_presigned_url(
-                    settings.R2_BUCKET_PUBLIC,
-                    image.url,
-                ),
-            )
+    images: list[PointMediaResponse] = [
+        PointMediaResponse(
+            id=image.id,
+            url=_public_url(settings.R2_BUCKET_PUBLIC, image.url),
         )
+        for image in point.images
+    ]
 
-    views_360: list[PointMediaResponse] = []
-    for view in point.images_360:
-        views_360.append(
-            PointMediaResponse(
-                id=view.id,
-                url=await storage_service.get_presigned_url(
-                    settings.R2_BUCKET_PUBLIC,
-                    view.url,
-                ),
-            )
+    views_360: list[PointMediaResponse] = [
+        PointMediaResponse(
+            id=view.id,
+            url=_public_url(settings.R2_BUCKET_PUBLIC, view.url),
         )
+        for view in point.images_360
+    ]
 
     return PointOfInterestDetailResponse(
         id=point.id,
