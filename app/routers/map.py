@@ -1,7 +1,8 @@
+from urllib.parse import quote
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
-from urllib.parse import quote
 
 from app.core.config import settings
 from app.core.database import get_db
