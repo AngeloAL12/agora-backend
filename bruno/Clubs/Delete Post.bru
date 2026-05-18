@@ -1,11 +1,11 @@
 meta {
-  name: Get club messages
+  name: Delete Post
   type: http
-  seq: 4
+  seq: 20
 }
 
-get {
-  url: {{base_url}}/clubs/{{club_id}}/messages?page={{page}}&limit={{limit}}
+delete {
+  url: {{base_url}}/clubs/{{club_id}}/posts/{{post_id}}
   body: none
   auth: bearer
 }
@@ -15,9 +15,8 @@ auth:bearer {
 }
 
 vars:pre-request {
-  club_id: 33
-  page: 2
-  limit: 50
+  club_id: 10
+  post_id: 1
 }
 
 settings {

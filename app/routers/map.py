@@ -2,7 +2,6 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from app.core.config import settings
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.campus import Building, PointOfInterest
@@ -43,10 +42,7 @@ async def get_building_detail(
         images.append(
             BuildingMediaResponse(
                 id=image.id,
-                url=await storage_service.get_presigned_url(
-                    settings.R2_BUCKET_PUBLIC,
-                    image.url,
-                ),
+                url=storage_service.get_public_url(image.url),
                 floor=image.floor,
             )
         )
@@ -57,10 +53,7 @@ async def get_building_detail(
         views_360.append(
             BuildingMediaResponse(
                 id=view.id,
-                url=await storage_service.get_presigned_url(
-                    settings.R2_BUCKET_PUBLIC,
-                    view.url,
-                ),
+                url=storage_service.get_public_url(view.url),
                 floor=view.floor,
             )
         )
@@ -104,10 +97,7 @@ async def get_point_of_interest_detail(
         images.append(
             PointMediaResponse(
                 id=image.id,
-                url=await storage_service.get_presigned_url(
-                    settings.R2_BUCKET_PUBLIC,
-                    image.url,
-                ),
+                url=storage_service.get_public_url(image.url),
             )
         )
 
@@ -116,10 +106,7 @@ async def get_point_of_interest_detail(
         views_360.append(
             PointMediaResponse(
                 id=view.id,
-                url=await storage_service.get_presigned_url(
-                    settings.R2_BUCKET_PUBLIC,
-                    view.url,
-                ),
+                url=storage_service.get_public_url(view.url),
             )
         )
 
