@@ -46,6 +46,7 @@ class ComplaintResponse(BaseModel):
     created_at: datetime | Any = Field(..., description="Creation timestamp")
     images: list[ComplaintImageResponse]
     evidences: list[ComplaintEvidenceResponse]
+    resolution_comment: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -81,6 +82,7 @@ class ComplaintListResponse(BaseModel):
 
 class ComplaintStatusUpdate(BaseModel):
     status: ComplaintStatus
+    comment: str | None = Field(default=None, max_length=1000)
 
 
 class ComplaintUpdate(BaseModel):
