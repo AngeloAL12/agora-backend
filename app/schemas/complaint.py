@@ -85,4 +85,4 @@ class ComplaintStatusUpdate(BaseModel):
 
 class ComplaintUpdate(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=255)
-    description: str | None = Field(default=None, min_length=1)
+    description: str | None = Field(default=None, min_length=1, max_length=1000)
