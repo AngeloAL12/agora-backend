@@ -317,7 +317,7 @@ async def create_complaint(
 
     # Las sugerencias no deben tener ubicación ni aceptar datos de edificio/salón.
     if type == ComplaintType.SUGGESTION:
-        if id_building is not None or (classroom is not None and classroom.strip()):
+        if id_building is not None or classroom_clean is not None:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Las sugerencias no pueden incluir ubicación",
@@ -692,6 +692,11 @@ async def update_complaint(
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="La descripción no puede estar vacía",
+            )
+        if len(description_clean) > MAX_DESCRIPTION_LENGTH:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="La descripción no puede exceder 1000 caracteres",
             )
         complaint.description = description_clean
 
