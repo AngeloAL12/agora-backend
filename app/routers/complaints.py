@@ -246,6 +246,17 @@ async def _serialize_complaint(complaint: Complaint) -> ComplaintResponse:
             }
         )
 
+    resolved_history = sorted(
+        [
+            h
+            for h in complaint.status_history
+            if h.new_status == ComplaintStatus.RESOLVED
+        ],
+        key=lambda h: h.created_at,
+        reverse=True,
+    )
+    resolution_comment = resolved_history[0].comment if resolved_history else None
+
     return ComplaintResponse(
         id=complaint.id,
         type=complaint.type,
@@ -259,6 +270,7 @@ async def _serialize_complaint(complaint: Complaint) -> ComplaintResponse:
         created_at=complaint.created_at,
         images=image_responses,
         evidences=evidence_responses,
+        resolution_comment=resolution_comment,
     )
 
 
@@ -354,7 +366,11 @@ async def create_complaint(
 
     complaint = db.execute(
         select(Complaint)
-        .options(selectinload(Complaint.images), selectinload(Complaint.evidences))
+        .options(
+            selectinload(Complaint.images),
+            selectinload(Complaint.evidences),
+            selectinload(Complaint.status_history),
+        )
         .where(Complaint.id == complaint.id)
     ).scalar_one()
 
@@ -396,7 +412,11 @@ async def get_my_complaint_detail(
 ):
     complaint = db.execute(
         select(Complaint)
-        .options(selectinload(Complaint.images), selectinload(Complaint.evidences))
+        .options(
+            selectinload(Complaint.images),
+            selectinload(Complaint.evidences),
+            selectinload(Complaint.status_history),
+        )
         .where(Complaint.id == complaint_id)
     ).scalar_one_or_none()
 
@@ -561,6 +581,7 @@ async def update_complaint_status(
             old_status=old_status,
             new_status=status_update.status,
             id_user=current_user.id,
+            comment=status_update.comment,
         )
     )
     db.commit()
@@ -617,7 +638,11 @@ async def update_complaint(
 ):
     complaint = db.execute(
         select(Complaint)
-        .options(selectinload(Complaint.images), selectinload(Complaint.evidences))
+        .options(
+            selectinload(Complaint.images),
+            selectinload(Complaint.evidences),
+            selectinload(Complaint.status_history),
+        )
         .where(Complaint.id == complaint_id)
     ).scalar_one_or_none()
 
