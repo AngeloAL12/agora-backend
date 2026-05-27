@@ -473,6 +473,7 @@ async def get_all_complaints(
 
 @router.post(
     "/{complaint_id}/evidence",
+    response_model=ComplaintResponse,
     dependencies=[Depends(_require_multipart_content_type)],
 )
 async def upload_complaint_evidence(
@@ -512,10 +513,17 @@ async def upload_complaint_evidence(
     db.add(new_evidence)
     db.commit()
 
-    return {
-        "message": "Evidencia subida y guardada exitosamente",
-        "object_key": object_key,
-    }
+    complaint = db.execute(
+        select(Complaint)
+        .options(
+            selectinload(Complaint.images),
+            selectinload(Complaint.evidences),
+            selectinload(Complaint.status_history),
+        )
+        .where(Complaint.id == complaint_id)
+    ).scalar_one()
+
+    return await _serialize_complaint(complaint)
 
 
 @router.patch("/{complaint_id}/status")

@@ -610,9 +610,16 @@ def test_upload_evidence_success(db, clear_dependency_overrides, monkeypatch):
         assert prefix == f"complaints/{complaint.id}/evidence"
         return f"{prefix}/stored-evidence.png"
 
+    async def fake_get_presigned_url(bucket_name, object_key, expiration=3600):
+        return f"https://cdn.example.com/{object_key}"
+
     monkeypatch.setattr(
         "app.routers.complaints.storage_service.upload_file",
         fake_upload_file,
+    )
+    monkeypatch.setattr(
+        "app.routers.complaints.storage_service.get_presigned_url",
+        fake_get_presigned_url,
     )
 
     client = TestClient(app)
@@ -623,9 +630,11 @@ def test_upload_evidence_success(db, clear_dependency_overrides, monkeypatch):
 
     assert response.status_code == 200
     data = response.json()
-    assert data["message"] == "Evidencia subida y guardada exitosamente"
+    assert data["id"] == complaint.id
+    assert len(data["evidences"]) == 1
     assert (
-        data["object_key"] == f"complaints/{complaint.id}/evidence/stored-evidence.png"
+        data["evidences"][0]["url"]
+        == f"https://cdn.example.com/complaints/{complaint.id}/evidence/stored-evidence.png"
     )
 
 
