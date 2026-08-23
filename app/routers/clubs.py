@@ -37,6 +37,7 @@ from app.models.club.message import ClubMessage
 from app.models.club.post import ClubPost
 from app.models.club.post_comment import ClubPostComment
 from app.models.club.post_like import ClubPostLike
+from app.models.moderation.content_report import ContentTargetType
 from app.schemas.auth.auth import CurrentUser
 from app.schemas.club.club import (
     ClubCategoryResponse,
@@ -66,6 +67,15 @@ from app.services.club.club_service import (
     list_pending_requests,
     request_join_club,
     resolve_join_request,
+)
+from app.services.content_moderation_service import (
+    ensure_content_allowed,
+    is_content_allowed,
+)
+from app.services.content_visibility_service import (
+    get_blocked_user_ids,
+    get_reported_target_ids,
+    users_are_disconnected,
 )
 from app.services.push_service import send_push_notification
 from app.services.redis_service import redis_chat_manager
@@ -312,6 +322,11 @@ def _notify_offline_members(
 
     # Excluir al remitente
     member_ids.discard(sender.id)
+    member_ids = {
+        member_id
+        for member_id in member_ids
+        if not users_are_disconnected(db, member_id, sender.id)
+    }
 
     # Calcular quiénes están offline
     offline_ids = member_ids - connected_user_ids
@@ -412,12 +427,29 @@ def get_club_messages(
 
     _verify_membership(club, current_user.id, db, require_leader=False)
 
+    blocked_user_ids = get_blocked_user_ids(db, current_user.id)
+    reported_message_ids = get_reported_target_ids(
+        db, current_user.id, ContentTargetType.MESSAGE
+    )
+
+    message_query = (
+        select(ClubMessage)
+        .options(joinedload(ClubMessage.user))
+        .where(
+            ClubMessage.id_club == club_id,
+            ClubMessage.is_removed.is_(False),
+        )
+    )
+    if blocked_user_ids:
+        message_query = message_query.where(
+            ClubMessage.id_user.notin_(blocked_user_ids)
+        )
+    if reported_message_ids:
+        message_query = message_query.where(ClubMessage.id.notin_(reported_message_ids))
+
     messages = (
         db.execute(
-            select(ClubMessage)
-            .options(joinedload(ClubMessage.user))
-            .where(ClubMessage.id_club == club_id)
-            .order_by(ClubMessage.created_at.desc(), ClubMessage.id.desc())
+            message_query.order_by(ClubMessage.created_at.desc(), ClubMessage.id.desc())
             .offset((page - 1) * limit)
             .limit(limit)
         )
@@ -484,6 +516,21 @@ async def club_chat(
         # Crear callback para recibir mensajes del Redis
         async def on_message_from_redis(message: dict) -> None:
             try:
+                sender_id = message.get("user", {}).get("id")
+                message_id = message.get("id")
+                if sender_id and await run_in_threadpool(
+                    users_are_disconnected, db, user_id, int(sender_id)
+                ):
+                    return
+                if message_id:
+                    reported_ids = await run_in_threadpool(
+                        get_reported_target_ids,
+                        db,
+                        user_id,
+                        ContentTargetType.MESSAGE,
+                    )
+                    if int(message_id) in reported_ids:
+                        return
                 await websocket.send_json(message)
             except RuntimeError as exc:
                 if "WebSocket is not connected" in str(exc):
@@ -508,6 +555,16 @@ async def club_chat(
             content = incoming.content.strip()
             if not content:
                 await websocket.send_json({"detail": content_error})
+                continue
+            if not is_content_allowed(content):
+                await websocket.send_json(
+                    {
+                        "detail": (
+                            "Este contenido podría infringir las normas "
+                            "de la comunidad."
+                        )
+                    }
+                )
                 continue
 
             try:
@@ -1013,12 +1070,23 @@ def get_post_comments(
     if not post:
         raise HTTPException(status_code=404, detail="Publicación no encontrada")
 
-    comments = (
-        db.query(ClubPostComment)
-        .filter(ClubPostComment.id_post == post_id)
-        .order_by(ClubPostComment.created_at.asc())
-        .all()
+    blocked_user_ids = get_blocked_user_ids(db, current_user.id)
+    reported_comment_ids = get_reported_target_ids(
+        db, current_user.id, ContentTargetType.COMMENT
     )
+    comments_query = db.query(ClubPostComment).filter(
+        ClubPostComment.id_post == post_id,
+        ClubPostComment.is_removed.is_(False),
+    )
+    if blocked_user_ids:
+        comments_query = comments_query.filter(
+            ClubPostComment.id_user.notin_(blocked_user_ids)
+        )
+    if reported_comment_ids:
+        comments_query = comments_query.filter(
+            ClubPostComment.id.notin_(reported_comment_ids)
+        )
+    comments = comments_query.order_by(ClubPostComment.created_at.asc()).all()
 
     return [
         {
@@ -1061,6 +1129,8 @@ def create_post_comment(
     )
     if not post:
         raise HTTPException(status_code=404, detail="Publicación no encontrada")
+
+    ensure_content_allowed(payload.content)
 
     comment = ClubPostComment(
         content=payload.content,

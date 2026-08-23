@@ -33,6 +33,9 @@ class Settings(BaseSettings):
     R2_PUBLIC_URL: str | None = None
     USER_ME_CACHE_TTL_SECONDS: int = 60
     AUTH_USER_CACHE_TTL_SECONDS: int = 300
+    CONTENT_MODERATION_BLOCKED_TERMS: str = (
+        "te voy a matar,matarte,kill yourself,pornografia,pornography"
+    )
 
     @model_validator(mode="after")
     def set_r2_endpoint(self) -> "Settings":

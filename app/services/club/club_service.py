@@ -12,11 +12,17 @@ from app.models.club.post import ClubPost
 from app.models.club.post_comment import ClubPostComment
 from app.models.club.post_image import ClubPostImage
 from app.models.club.post_like import ClubPostLike
+from app.models.moderation.content_report import ContentTargetType
 from app.models.notification.notification import (
     NotificationCategory,
     NotificationEventType,
 )
 from app.schemas.club.join_request import JoinRequestAction
+from app.services.content_moderation_service import ensure_content_allowed
+from app.services.content_visibility_service import (
+    get_blocked_user_ids,
+    get_reported_target_ids,
+)
 from app.services.notification_service import create_notification
 from app.services.storage_service import storage_service
 
@@ -206,10 +212,23 @@ def get_club_posts_service(
 
     offset = (page - 1) * limit
 
+    blocked_user_ids = get_blocked_user_ids(db, user_id)
+    reported_post_ids = get_reported_target_ids(db, user_id, ContentTargetType.POST)
+    reported_comment_ids = get_reported_target_ids(
+        db, user_id, ContentTargetType.COMMENT
+    )
+
+    posts_query = db.query(ClubPost).filter(
+        ClubPost.id_club == club.id,
+        ClubPost.is_removed.is_(False),
+    )
+    if blocked_user_ids:
+        posts_query = posts_query.filter(ClubPost.id_author.notin_(blocked_user_ids))
+    if reported_post_ids:
+        posts_query = posts_query.filter(ClubPost.id.notin_(reported_post_ids))
+
     posts = (
-        db.query(ClubPost)
-        .filter(ClubPost.id_club == club.id)
-        .order_by(ClubPost.created_at.desc())
+        posts_query.order_by(ClubPost.created_at.desc())
         .offset(offset)
         .limit(limit)
         .all()
@@ -234,12 +253,21 @@ def get_club_posts_service(
         .all()
     }
 
-    comment_counts = dict(
-        db.query(ClubPostComment.id_post, func.count(ClubPostComment.id))
-        .filter(ClubPostComment.id_post.in_(post_ids))
-        .group_by(ClubPostComment.id_post)
-        .all()
+    comments_query = db.query(
+        ClubPostComment.id_post, func.count(ClubPostComment.id)
+    ).filter(
+        ClubPostComment.id_post.in_(post_ids),
+        ClubPostComment.is_removed.is_(False),
     )
+    if blocked_user_ids:
+        comments_query = comments_query.filter(
+            ClubPostComment.id_user.notin_(blocked_user_ids)
+        )
+    if reported_comment_ids:
+        comments_query = comments_query.filter(
+            ClubPostComment.id.notin_(reported_comment_ids)
+        )
+    comment_counts = dict(comments_query.group_by(ClubPostComment.id_post).all())
 
     result = []
 
@@ -269,7 +297,13 @@ def get_club_posts_service(
                             else None,
                         },
                     }
-                    for comment in post.comments[:3]
+                    for comment in [
+                        item
+                        for item in post.comments
+                        if not item.is_removed
+                        and item.id_user not in blocked_user_ids
+                        and item.id not in reported_comment_ids
+                    ][:3]
                 ],
                 "images": image_urls,
                 "author": {
@@ -294,6 +328,7 @@ async def create_club_post_service(
     images: list[UploadFile],
 ):
     verify_membership(db, club, user_id, require_leader=False)
+    ensure_content_allowed(content)
 
     post = ClubPost(
         content=content,

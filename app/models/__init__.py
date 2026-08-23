@@ -26,6 +26,10 @@ from app.models.complaint import (  # noqa: F401
     ComplaintImage,
     ComplaintStatusHistory,
 )
+from app.models.moderation import (  # noqa: F401
+    ContentReport,
+    UserBlock,
+)
 from app.models.notification import (  # noqa: F401
     Notification,
     NotificationCategory,

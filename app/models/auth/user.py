@@ -69,7 +69,9 @@ class User(Base):
     )
     clubs_led: Mapped[list["Club"]] = relationship(back_populates="leader")
     club_memberships: Mapped[list["ClubMember"]] = relationship(back_populates="user")
-    club_messages: Mapped[list["ClubMessage"]] = relationship(back_populates="user")
+    club_messages: Mapped[list["ClubMessage"]] = relationship(
+        back_populates="user", foreign_keys="ClubMessage.id_user"
+    )
     club_join_requests: Mapped[list["ClubJoinRequest"]] = relationship(
         back_populates="user"
     )
