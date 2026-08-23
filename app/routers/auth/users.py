@@ -1,3 +1,4 @@
+import secrets
 from datetime import datetime
 from typing import Any
 
@@ -12,7 +13,7 @@ from fastapi import (
     status,
 )
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.config import settings
@@ -24,6 +25,7 @@ from app.core.security import (
     require_staff,
 )
 from app.models.auth.user import User
+from app.models.auth.user_session import UserSession
 from app.models.career import Career
 from app.schemas.auth.auth import CurrentUser
 from app.services.cache_service import cache_service
@@ -209,6 +211,43 @@ def update_my_career(
     cache_service.delete(_user_me_cache_key(current_user.id))
     cache_service.delete(_auth_user_cache_key(current_user.id))
     return {"id_career": user.id_career}
+
+
+@router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_my_account(
+    current_user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Anonymize the current user and revoke every active session."""
+    user = db.execute(
+        select(User).where(User.id == current_user.id)
+    ).scalar_one_or_none()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Usuario no encontrado",
+        )
+
+    previous_photo = user.photo
+    if previous_photo and not previous_photo.startswith(("http://", "https://")):
+        await storage_service.delete_file(settings.R2_BUCKET_PUBLIC, previous_photo)
+
+    tombstone = secrets.token_urlsafe(18)
+    user.email = f"deleted-{user.id}-{tombstone}@deleted.invalid"
+    user.oauth_provider = "deleted"
+    user.oauth_sub = tombstone
+    user.name = "Cuenta eliminada"
+    user.photo = None
+    user.id_career = None
+    user.is_active = False
+
+    db.execute(delete(UserSession).where(UserSession.id_user == user.id))
+    db.commit()
+
+    cache_service.delete(_user_me_cache_key(user.id))
+    cache_service.delete(_auth_user_cache_key(user.id))
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("", response_model=list[UserListResponse])

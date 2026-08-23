@@ -39,6 +39,23 @@ def test_google_login_success(mock_verify, user_role):
 
 
 @patch("google.oauth2.id_token.verify_oauth2_token")
+def test_google_login_success_for_allowlisted_external_email(mock_verify, user_role):
+    from app.core.config import settings
+
+    mock_verify.return_value = {
+        "aud": settings.GOOGLE_IOS_CLIENT_ID or settings.GOOGLE_CLIENT_ID,
+        "email": "ag0rapro12@gmail.com",
+        "name": "Agora Pro",
+        "sub": "google-agora-pro-12",
+    }
+
+    response = client.post("/auth/google/mobile-login", json={"token": "fake-token"})
+
+    assert response.status_code == 200
+    assert response.json()["user"]["email"] == "ag0rapro12@gmail.com"
+
+
+@patch("google.oauth2.id_token.verify_oauth2_token")
 def test_google_login_success_android_audience(mock_verify, user_role, monkeypatch):
     from app.core.config import settings
 
