@@ -24,6 +24,16 @@ from app.services.auth.auth_service import RoleNotFoundError, verify_and_save_us
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
+GOOGLE_EMAIL_ALLOWLIST = frozenset({"ag0rapro12@gmail.com"})
+
+
+def _is_allowed_google_email(email: str) -> bool:
+    normalized_email = email.strip().casefold()
+    return (
+        normalized_email.endswith("@itmexicali.edu.mx")
+        or normalized_email in GOOGLE_EMAIL_ALLOWLIST
+    )
+
 
 def _save_refresh_token(db: Session, user_id: int, refresh_token: str) -> None:
     now = datetime.now(UTC)
@@ -97,14 +107,15 @@ async def google_mobile_login(
     if valid_client_ids and token_aud not in valid_client_ids:
         raise HTTPException(status_code=401, detail="Token de Google inválido")
 
-    email = idinfo.get("email")
-    if not email or not email.endswith("@itmexicali.edu.mx"):
+    raw_email = idinfo.get("email")
+    if not raw_email or not _is_allowed_google_email(raw_email):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=(
                 "Acceso denegado. Se requiere correo institucional (@itmexicali.edu.mx)"
             ),
         )
+    email = raw_email.strip().casefold()
 
     try:
         user = verify_and_save_user(
