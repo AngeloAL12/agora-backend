@@ -9,6 +9,36 @@ from app.services.notification_service import create_notification
 from tests.app.routers.test_complaints import _create_user
 
 
+def test_create_notification_ignores_inactive_user(db, monkeypatch):
+    user = _create_user(
+        db,
+        RoleName.USER,
+        "deleted@itmexicali.edu.mx",
+        "deleted-user",
+    )
+    user.is_active = False
+    db.commit()
+
+    sent = []
+    monkeypatch.setattr(
+        "app.services.notification_service.send_push_notification",
+        lambda *args, **kwargs: sent.append("called"),
+    )
+
+    notification = create_notification(
+        db,
+        id_user=user.id,
+        category=NotificationCategory.REPORTS,
+        event_type=NotificationEventType.COMPLAINT_RESOLVED,
+        title="Queja resuelta",
+        body="No debe persistirse",
+    )
+
+    assert notification is None
+    assert db.query(Notification).filter(Notification.id_user == user.id).count() == 0
+    assert sent == []
+
+
 def test_create_notification_sends_push_when_user_has_token(db, monkeypatch):
     user = _create_user(db, RoleName.USER, "push1@itmexicali.edu.mx", "push-sub-1")
     db.add(

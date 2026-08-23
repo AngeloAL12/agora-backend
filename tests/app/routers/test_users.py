@@ -1,3 +1,5 @@
+from datetime import UTC, datetime
+
 from fastapi.testclient import TestClient
 
 from app.core.config import settings
@@ -8,6 +10,33 @@ from app.models.auth.role import Role
 from app.models.auth.user import User
 from app.models.auth.user_session import UserSession
 from app.models.career import Career
+from app.models.club.club import Club
+from app.models.club.club_join_request import ClubJoinRequest
+from app.models.club.club_member import ClubMember
+from app.models.club.event import ClubEvent
+from app.models.club.message import ClubMessage
+from app.models.club.post import ClubPost
+from app.models.club.post_comment import ClubPostComment
+from app.models.club.post_image import ClubPostImage
+from app.models.club.post_like import ClubPostLike
+from app.models.complaint.complaint import (
+    Complaint,
+    ComplaintCategory,
+    ComplaintStatus,
+    ComplaintType,
+)
+from app.models.complaint.complaint_image import ComplaintImage
+from app.models.moderation.content_report import (
+    ContentReport,
+    ContentReportReason,
+    ContentTargetType,
+)
+from app.models.moderation.user_block import UserBlock
+from app.models.notification.notification import (
+    Notification,
+    NotificationCategory,
+    NotificationEventType,
+)
 from app.schemas.auth.auth import CurrentUser
 
 
@@ -610,9 +639,121 @@ def test_delete_my_account_anonymizes_user_and_revokes_session(
     )
     db.add(user)
     db.flush()
-    db.add(UserSession(id_user=user.id, refresh_token="refresh-token"))
+
+    successor = User(
+        email="successor@itmexicali.edu.mx",
+        name="Successor",
+        oauth_provider="google",
+        oauth_sub="successor-user",
+        id_role=role.id,
+    )
+    db.add(successor)
+    db.flush()
+
+    transferred_club = Club(
+        name="Club con sucesor",
+        description="Club que debe transferirse",
+        id_leader=user.id,
+    )
+    archived_club = Club(
+        name="Club sin sucesor",
+        description="Club que debe archivarse",
+        id_leader=user.id,
+    )
+    db.add_all([transferred_club, archived_club])
+    db.flush()
+    db.add_all(
+        [
+            ClubMember(id_club=transferred_club.id, id_user=user.id),
+            ClubMember(id_club=transferred_club.id, id_user=successor.id),
+            ClubMember(id_club=archived_club.id, id_user=user.id),
+            ClubJoinRequest(id_club=transferred_club.id, id_user=user.id),
+        ]
+    )
+
+    deleted_post = ClubPost(
+        content="Contenido que debe eliminarse",
+        id_club=transferred_club.id,
+        id_author=user.id,
+    )
+    retained_post = ClubPost(
+        content="Contenido de otro usuario",
+        id_club=transferred_club.id,
+        id_author=successor.id,
+    )
+    db.add_all([deleted_post, retained_post])
+    db.flush()
+    db.add_all(
+        [
+            ClubPostImage(
+                id_post=deleted_post.id,
+                url="clubs/1/posts/deleted-image.jpg",
+            ),
+            ClubPostComment(
+                id_post=retained_post.id,
+                id_user=user.id,
+                content="Comentario que debe eliminarse",
+            ),
+            ClubPostLike(id_post=retained_post.id, id_user=user.id),
+            ClubMessage(
+                id_club=transferred_club.id,
+                id_user=user.id,
+                content="Mensaje que debe eliminarse",
+            ),
+            ClubEvent(
+                id_club=transferred_club.id,
+                id_author=user.id,
+                title="Evento que debe eliminarse",
+                date=datetime.now(UTC),
+            ),
+            UserSession(
+                id_user=user.id,
+                refresh_token="refresh-token",
+                push_token="ExponentPushToken[deleted-user]",
+            ),
+            Notification(
+                id_user=user.id,
+                category=NotificationCategory.REPORTS,
+                event_type=NotificationEventType.COMPLAINT_SUBMITTED,
+                title="Notificación personal",
+                body="Debe eliminarse",
+            ),
+            UserBlock(blocker_id=user.id, blocked_id=successor.id),
+        ]
+    )
+
+    complaint = Complaint(
+        id_user=user.id,
+        type=ComplaintType.REPORT,
+        title="Queja institucional retenida",
+        description="Seguimiento institucional",
+        category=ComplaintCategory.SECURITY,
+        status=ComplaintStatus.PENDING,
+    )
+    db.add(complaint)
+    db.flush()
+    complaint_image = ComplaintImage(
+        id_complaint=complaint.id,
+        url="complaints/retained/private-image.jpg",
+    )
+    db.add(complaint_image)
+    content_report = ContentReport(
+        reporter_id=successor.id,
+        reported_user_id=user.id,
+        target_type=ContentTargetType.POST,
+        target_id=deleted_post.id,
+        club_id=transferred_club.id,
+        reason=ContentReportReason.OTHER,
+        content_snapshot=deleted_post.content,
+    )
+    db.add(content_report)
     db.commit()
     db.refresh(user)
+    deleted_post_id = deleted_post.id
+    retained_post_id = retained_post.id
+    complaint_id = complaint.id
+    complaint_image_id = complaint_image.id
+    content_report_id = content_report.id
 
     app.dependency_overrides[get_current_user] = lambda: CurrentUser(
         id=user.id,
@@ -649,9 +790,55 @@ def test_delete_my_account_anonymizes_user_and_revokes_session(
     assert user.id_career is None
     assert user.is_active is False
     assert db.query(UserSession).filter(UserSession.id_user == user.id).count() == 0
-    assert deleted_files == [(settings.R2_BUCKET_PUBLIC, "users/delete-me/photo.png")]
+    assert (
+        db.query(ClubPost).filter(ClubPost.id == deleted_post_id).one_or_none() is None
+    )
+    assert (
+        db.query(ClubPostImage).filter(ClubPostImage.id_post == deleted_post_id).count()
+        == 0
+    )
+    assert db.get(ClubPost, retained_post_id) is not None
+    assert (
+        db.query(ClubPostComment).filter(ClubPostComment.id_user == user.id).count()
+        == 0
+    )
+    assert db.query(ClubPostLike).filter(ClubPostLike.id_user == user.id).count() == 0
+    assert db.query(ClubMessage).filter(ClubMessage.id_user == user.id).count() == 0
+    assert db.query(ClubEvent).filter(ClubEvent.id_author == user.id).count() == 0
+    assert db.query(ClubMember).filter(ClubMember.id_user == user.id).count() == 0
+    assert (
+        db.query(ClubJoinRequest).filter(ClubJoinRequest.id_user == user.id).count()
+        == 0
+    )
+    assert db.query(Notification).filter(Notification.id_user == user.id).count() == 0
+    assert (
+        db.query(UserBlock)
+        .filter((UserBlock.blocker_id == user.id) | (UserBlock.blocked_id == user.id))
+        .count()
+        == 0
+    )
+
+    db.refresh(transferred_club)
+    db.refresh(archived_club)
+    assert transferred_club.id_leader == successor.id
+    assert transferred_club.archived_at is None
+    assert archived_club.id_leader == user.id
+    assert archived_club.archived_at is not None
+
+    assert db.get(Complaint, complaint_id) is not None
+    assert db.get(ComplaintImage, complaint_image_id) is not None
+    assert db.get(ContentReport, content_report_id) is not None
+    assert deleted_files == [
+        (settings.R2_BUCKET_PUBLIC, "users/delete-me/photo.png"),
+        (settings.R2_BUCKET_PUBLIC, "clubs/1/posts/deleted-image.jpg"),
+    ]
     assert f"users:me:v1:{user.id}" in deleted_cache_keys
     assert f"auth:user:v1:{user.id}" in deleted_cache_keys
+
+    archived_response = TestClient(app).get(f"/clubs/{archived_club.id}")
+    assert archived_response.status_code == 404
+    archived_join_response = TestClient(app).post(f"/clubs/{archived_club.id}/members")
+    assert archived_join_response.status_code == 404
 
 
 def test_delete_my_account_returns_404_when_user_does_not_exist(
