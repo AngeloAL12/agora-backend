@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 from app.routers.auth import auth_router, push_token_router, users_router
 from app.routers.clubs import router as clubs_router
 from app.routers.complaints import router as complaints_router
+from app.routers.content_safety import router as content_safety_router
 from app.routers.health import router as health_router
 from app.routers.map import router as map_router
 from app.routers.notifications import router as notifications_router
@@ -28,6 +29,7 @@ app = FastAPI(lifespan=lifespan)
 
 app.include_router(auth_router)
 app.include_router(complaints_router)
+app.include_router(content_safety_router)
 app.include_router(health_router)
 app.include_router(users_router)
 app.include_router(push_token_router)
