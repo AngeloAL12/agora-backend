@@ -2,6 +2,7 @@ import logging
 
 from sqlalchemy.orm import Session
 
+from app.models.auth.user import User
 from app.models.auth.user_session import UserSession
 from app.models.notification.notification import (
     Notification,
@@ -23,7 +24,11 @@ def create_notification(
     body: str,
     reference_id: int | None = None,
     extra_id: int | None = None,
-) -> Notification:
+) -> Notification | None:
+    user_is_active = db.query(User.is_active).filter(User.id == id_user).scalar()
+    if not user_is_active:
+        return None
+
     notification = Notification(
         id_user=id_user,
         category=category,

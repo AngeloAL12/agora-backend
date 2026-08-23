@@ -89,6 +89,9 @@ router = APIRouter(prefix="/clubs", tags=["clubs"])
 def _verify_membership(
     club: Club, user_id: int, db: Session, require_leader: bool = False
 ):
+    if club.archived_at is not None:
+        raise HTTPException(status_code=404, detail="Club no encontrado")
+
     if require_leader:
         if club.id_leader != user_id:
             raise HTTPException(
@@ -155,6 +158,9 @@ def _clean_required_text(value: str, field_name: str, max_length: int) -> str:
 
 
 def _is_club_member(club: Club, user_id: int, db: Session) -> bool:
+    if club.archived_at is not None:
+        return False
+
     if club.id_leader == user_id:
         return True
 
@@ -365,6 +371,7 @@ def get_clubs(
     rows = (
         db.query(Club, func.count(ClubMember.id).label("members_count"))
         .outerjoin(ClubMember, Club.id == ClubMember.id_club)
+        .filter(Club.archived_at.is_(None))
         .group_by(Club.id)
         .order_by(Club.id)
         .offset(skip)
@@ -388,7 +395,10 @@ def get_my_clubs(
     rows = (
         db.query(Club, func.count(ClubMember.id).label("members_count"))
         .outerjoin(ClubMember, Club.id == ClubMember.id_club)
-        .filter((Club.id_leader == current_user.id) | Club.id.in_(membership_subq))
+        .filter(
+            Club.archived_at.is_(None),
+            (Club.id_leader == current_user.id) | Club.id.in_(membership_subq),
+        )
         .group_by(Club.id)
         .order_by(Club.id)
         .all()
@@ -403,7 +413,7 @@ def get_club_categories(db: Session = Depends(get_db)):
 
 @router.get("/{club_id}", response_model=ClubDetailResponse)
 def get_club(club_id: int, db: Session = Depends(get_db)):
-    club = db.query(Club).filter(Club.id == club_id).first()
+    club = db.query(Club).filter(Club.id == club_id, Club.archived_at.is_(None)).first()
 
     if not club:
         raise HTTPException(status_code=404, detail="Club no encontrado")
@@ -771,7 +781,7 @@ def join_club(
     current_user: CurrentUser = Depends(get_current_user),
 ):
     club = db.query(Club).filter(Club.id == club_id).first()
-    if not club:
+    if not club or club.archived_at is not None:
         raise HTTPException(status_code=404, detail="Club no encontrado")
 
     if club.is_private:
