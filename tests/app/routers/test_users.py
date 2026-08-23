@@ -6,6 +6,7 @@ from app.core.security import _auth_user_cache_key, get_current_user, require_ad
 from app.main import app
 from app.models.auth.role import Role
 from app.models.auth.user import User
+from app.models.auth.user_session import UserSession
 from app.models.career import Career
 from app.schemas.auth.auth import CurrentUser
 
@@ -583,6 +584,88 @@ def test_update_my_career_invalidates_user_me_cache(
     assert response.status_code == 200
     assert f"users:me:v1:{user.id}" in deleted_keys
     assert f"auth:user:v1:{user.id}" in deleted_keys
+
+
+def test_delete_my_account_anonymizes_user_and_revokes_session(
+    db, clear_dependency_overrides, monkeypatch
+):
+    role = db.query(Role).filter(Role.name == RoleName.USER).one_or_none()
+    if not role:
+        role = Role(name=RoleName.USER)
+        db.add(role)
+        db.commit()
+
+    career = Career(name="Ingeniería Mecatrónica")
+    db.add(career)
+    db.flush()
+
+    user = User(
+        email="delete-me@itmexicali.edu.mx",
+        name="Delete Me",
+        oauth_provider="google",
+        oauth_sub="delete-me-user",
+        id_role=role.id,
+        id_career=career.id,
+        photo="users/delete-me/photo.png",
+    )
+    db.add(user)
+    db.flush()
+    db.add(UserSession(id_user=user.id, refresh_token="refresh-token"))
+    db.commit()
+    db.refresh(user)
+
+    app.dependency_overrides[get_current_user] = lambda: CurrentUser(
+        id=user.id,
+        role=RoleName.USER,
+    )
+
+    deleted_files = []
+    deleted_cache_keys = []
+
+    async def fake_delete_file(bucket_name, object_key):
+        deleted_files.append((bucket_name, object_key))
+
+    monkeypatch.setattr(
+        "app.routers.auth.users.storage_service.delete_file",
+        fake_delete_file,
+    )
+    monkeypatch.setattr(
+        "app.routers.auth.users.cache_service.delete",
+        lambda key: deleted_cache_keys.append(key),
+    )
+
+    response = TestClient(app).delete("/users/me")
+
+    assert response.status_code == 204
+    assert response.content == b""
+
+    db.refresh(user)
+    assert user.email.startswith(f"deleted-{user.id}-")
+    assert user.email.endswith("@deleted.invalid")
+    assert user.oauth_provider == "deleted"
+    assert user.oauth_sub not in {"", "delete-me-user"}
+    assert user.name == "Cuenta eliminada"
+    assert user.photo is None
+    assert user.id_career is None
+    assert user.is_active is False
+    assert db.query(UserSession).filter(UserSession.id_user == user.id).count() == 0
+    assert deleted_files == [(settings.R2_BUCKET_PUBLIC, "users/delete-me/photo.png")]
+    assert f"users:me:v1:{user.id}" in deleted_cache_keys
+    assert f"auth:user:v1:{user.id}" in deleted_cache_keys
+
+
+def test_delete_my_account_returns_404_when_user_does_not_exist(
+    clear_dependency_overrides,
+):
+    app.dependency_overrides[get_current_user] = lambda: CurrentUser(
+        id=9999,
+        role=RoleName.USER,
+    )
+
+    response = TestClient(app).delete("/users/me")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Usuario no encontrado"
 
 
 # ── GET /users ───────────────────────────────────────────────────────────────
