@@ -54,12 +54,22 @@ uv sync --group dev
 
 - `DATABASE_URL`
 - `SECRET_KEY`
+- `REDIS_URL` (opcional, default: `redis://localhost:6379/0`)
+- `REDIS_SOCKET_CONNECT_TIMEOUT` (opcional, segundos; default: `2.0`)
+- `REDIS_SOCKET_TIMEOUT` (opcional, segundos; default: `None`)
 
 4. Aplicar migraciones:
 
 ```bash
 uv run alembic upgrade head
 ```
+
+> Si aparece error `UnicodeDecodeError: 'utf-8' codec can't decode byte 0xf3`, forzar cliente UTF-8:
+>
+> - Windows (PowerShell): `setx PGCLIENTENCODING UTF8` y reiniciar terminal
+> - En app (SQLAlchemy): `connect_args={"options": "-c client_encoding=UTF8"}`
+>
+> - PostgreSQL: `SHOW client_encoding; SHOW lc_messages;` -> ideal `UTF8`.
 
 5. Verificar revision actual:
 

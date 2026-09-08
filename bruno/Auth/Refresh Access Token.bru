@@ -1,0 +1,44 @@
+meta {
+  name: Refresh Access Token
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{base_url}}/auth/refresh
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "refresh_token": "{{refresh_token}}"
+  }
+}
+
+script:post-response {
+  if (res.getStatus() === 200) {
+    const body = res.getBody();
+
+    if (body.access_token) {
+      bru.setEnvVar("auth_token", body.access_token);
+    }
+
+    if (body.refresh_token) {
+      bru.setEnvVar("refresh_token", body.refresh_token);
+    }
+  }
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}
+
+docs {
+  # Refresh Access Token
+  Intercambia un `refresh_token` valido por un nuevo `access_token` y un nuevo `refresh_token`.
+
+  ## Nota
+  Este endpoint rota el refresh token, por lo que el valor previo deja de ser valido.
+}

@@ -1,0 +1,28 @@
+meta {
+  name: Create a club
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{base_url}}/clubs
+  body: form
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{auth_token}}
+}
+
+body:multipart-form {
+  name: Club de prueba
+  description: Club para validar chat
+  id_category: "1"
+  ~profile_image:
+  ~cover_image:
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

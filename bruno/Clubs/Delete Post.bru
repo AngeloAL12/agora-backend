@@ -1,0 +1,25 @@
+meta {
+  name: Delete Post
+  type: http
+  seq: 20
+}
+
+delete {
+  url: {{base_url}}/clubs/{{club_id}}/posts/{{post_id}}
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{auth_token}}
+}
+
+vars:pre-request {
+  club_id: 10
+  post_id: 1
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

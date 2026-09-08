@@ -1,0 +1,32 @@
+meta {
+  name: Get All Users
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{base_url}}/users
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{admin_token}}
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}
+
+docs {
+  # Listar Todos los Usuarios
+  Devuelve la lista completa de usuarios registrados en el sistema.
+
+  ## Permisos
+  Requiere Bearer Token con rol de **Administrador**.
+
+  ## Respuesta
+  - **200 OK** con array de usuarios (id, email, name, photo, is_active, id_role, created_at).
+  - **403 Forbidden** si el usuario no es administrador.
+}

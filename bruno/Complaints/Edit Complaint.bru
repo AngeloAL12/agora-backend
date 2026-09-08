@@ -1,0 +1,46 @@
+meta {
+  name: Edit Complaint
+  type: http
+  seq: 9
+}
+
+patch {
+  url: {{base_url}}/complaints/{{complaint_id}}
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{auth_token}}
+}
+
+body:json {
+  {
+    "title": "Nuevo título actualizado",
+    "description": "Nueva descripción actualizada"
+  }
+}
+
+vars:pre-request {
+  complaint_id: 1
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}
+
+docs {
+  # Editar Queja
+  Modifica el título y/o descripción de una queja.
+
+  ## Restricciones
+  - Solo el propietario de la queja puede editarla.
+  - Solo se pueden editar quejas en estado **PENDING**.
+
+  ## Respuesta
+  - **200 OK** con la queja actualizada.
+  - **403 Forbidden** si el usuario no es el propietario.
+  - **404 Not Found** si la queja no existe.
+  - **409 Conflict** si la queja no está en estado PENDING.
+}

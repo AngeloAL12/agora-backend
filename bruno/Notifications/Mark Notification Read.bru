@@ -1,0 +1,29 @@
+meta {
+  name: Mark Notification Read
+  type: http
+  seq: 2
+}
+
+patch {
+  url: {{base_url}}/notifications/{{notification_id}}/read
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{auth_token}}
+}
+
+vars:pre-request {
+  notification_id: 1
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}
+
+docs {
+  # Mark Notification Read
+  Marca como leida una notificacion especifica del usuario autenticado.
+}

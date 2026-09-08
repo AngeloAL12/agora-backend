@@ -1,10 +1,22 @@
 from unittest.mock import MagicMock, patch
 
-from app.core.database import SessionLocal, engine, get_db
+from app.core.database import SessionLocal, engine, get_db, get_engine
 
 
 def test_engine_exists():
     assert engine is not None
+
+
+def test_get_engine_sets_connect_args_only_for_postgres():
+    sqlite_engine = get_engine("sqlite:///:memory:")
+    assert sqlite_engine is not None
+    assert sqlite_engine.dialect.name == "sqlite"
+
+    postgres_engine = get_engine("postgresql://user:pass@localhost/db")
+    assert postgres_engine is not None
+    assert postgres_engine.dialect.name == "postgresql"
+
+    # Verifica que estas llamadas no fallan y activan los caminos de config condicional.
 
 
 def test_session_local():

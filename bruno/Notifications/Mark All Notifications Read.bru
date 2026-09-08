@@ -1,0 +1,26 @@
+meta {
+  name: Mark All Notifications Read
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{base_url}}/notifications/read-all
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{auth_token}}
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}
+
+docs {
+  # Mark All Notifications Read
+  Marca todas las notificaciones no leidas del usuario autenticado como leidas.
+  Respuesta esperada: `204 No Content`.
+}

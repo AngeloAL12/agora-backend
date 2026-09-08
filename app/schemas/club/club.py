@@ -1,0 +1,39 @@
+from datetime import datetime
+
+from pydantic import BaseModel, ConfigDict
+
+
+class ClubCategoryResponse(BaseModel):
+    id: int
+    name: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ClubResponse(BaseModel):
+    id: int
+    name: str
+    description: str
+
+    profile_image: str | None
+    cover_image: str | None
+
+    id_category: int | None
+    id_leader: int
+    is_private: bool
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ClubDetailResponse(ClubResponse):
+    members_count: int
+
+
+class ClubMemberResponse(BaseModel):
+    id: int
+    name: str
+    photo: str | None
+    is_leader: bool
+
+    model_config = ConfigDict(from_attributes=True)

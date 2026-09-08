@@ -1,0 +1,706 @@
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    Request,
+    UploadFile,
+    status,
+)
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session, selectinload
+
+from app.core.config import settings
+from app.core.database import get_db
+from app.core.roles import RoleName
+from app.core.security import get_current_user
+from app.models.complaint.complaint import (
+    Complaint,
+    ComplaintCategory,
+    ComplaintStatus,
+    ComplaintType,
+)
+from app.models.complaint.complaint_evidence import ComplaintEvidence
+from app.models.complaint.complaint_image import ComplaintImage
+from app.models.complaint.complaint_status_history import ComplaintStatusHistory
+from app.models.notification.notification import (
+    NotificationCategory,
+    NotificationEventType,
+)
+from app.schemas.auth.auth import CurrentUser
+from app.schemas.complaint import (
+    ComplaintListItemResponse,
+    ComplaintListResponse,
+    ComplaintOut,
+    ComplaintResponse,
+    ComplaintStats,
+    ComplaintStatusUpdate,
+    ComplaintUpdate,
+)
+from app.services.storage_service import storage_service
+
+router = APIRouter(prefix="/complaints", tags=["complaints"])
+
+MAX_TITLE_LENGTH = 255
+MAX_DESCRIPTION_LENGTH = 1000
+
+_FINAL_STATUSES = {ComplaintStatus.RESOLVED, ComplaintStatus.REJECTED}
+_ALLOWED_TRANSITIONS: dict[ComplaintStatus, set[ComplaintStatus]] = {
+    ComplaintStatus.PENDING: {ComplaintStatus.IN_PROGRESS, ComplaintStatus.REJECTED},
+    ComplaintStatus.IN_PROGRESS: {ComplaintStatus.RESOLVED, ComplaintStatus.REJECTED},
+}
+
+
+def _normalize_optional_text(value: str | None) -> str | None:
+    if value is None:
+        return None
+
+    cleaned = value.strip()
+    return cleaned or None
+
+
+def _validate_create_complaint_text(title: str, description: str) -> tuple[str, str]:
+    title_clean = title.strip()
+    description_clean = description.strip()
+
+    if not title_clean:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El título no puede estar vacío",
+        )
+
+    if not description_clean:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="La descripción no puede estar vacía",
+        )
+
+    if len(title_clean) > MAX_TITLE_LENGTH:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="El título no puede exceder 255 caracteres",
+        )
+
+    if len(description_clean) > MAX_DESCRIPTION_LENGTH:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="La descripción no puede exceder 1000 caracteres",
+        )
+
+    return title_clean, description_clean
+
+
+def _ensure_any_content_type(
+    request: Request, expected_prefixes: tuple[str, ...]
+) -> None:
+    content_type = request.headers.get("content-type", "").lower()
+    if any(content_type.startswith(prefix) for prefix in expected_prefixes):
+        return
+
+    if len(expected_prefixes) == 1:
+        expected = expected_prefixes[0]
+    else:
+        expected = ", ".join(expected_prefixes[:-1]) + " o " + expected_prefixes[-1]
+    raise HTTPException(
+        status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+        detail=f"Content-Type inválido. Se esperaba {expected}.",
+    )
+
+
+def _require_multipart_content_type(request: Request) -> None:
+    _ensure_any_content_type(request, ("multipart/form-data",))
+
+
+def _require_complaint_create_content_type(request: Request) -> None:
+    _ensure_any_content_type(
+        request,
+        ("multipart/form-data", "application/x-www-form-urlencoded"),
+    )
+
+
+def _validate_status_transition(
+    current_status: ComplaintStatus,
+    new_status: ComplaintStatus,
+) -> None:
+    if new_status == current_status:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"La queja ya se encuentra en estado {current_status.value}.",
+        )
+
+    if current_status in _FINAL_STATUSES:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "No se puede cambiar el estado de una queja finalizada "
+                f"({current_status.value})."
+            ),
+        )
+
+    allowed_next = _ALLOWED_TRANSITIONS.get(current_status, set())
+    if new_status not in allowed_next:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"Transición de estado inválida: {current_status.value} -> "
+                f"{new_status.value}."
+            ),
+        )
+
+
+def _notify_complaint_submitted(
+    user_id: int, complaint_id: int, complaint_title: str
+) -> None:
+    from app.core.database import SessionLocal
+    from app.services.notification_service import create_notification
+
+    db = SessionLocal()
+    try:
+        create_notification(
+            db,
+            id_user=user_id,
+            category=NotificationCategory.REPORTS,
+            event_type=NotificationEventType.COMPLAINT_SUBMITTED,
+            title="Queja enviada",
+            body=f'Tu queja "{complaint_title}" fue recibida y está siendo revisada.',
+            reference_id=complaint_id,
+        )
+    finally:
+        db.close()
+
+
+def _notify_complaint_status_changed(
+    user_id: int,
+    complaint_id: int,
+    complaint_title: str,
+    new_status: ComplaintStatus,
+) -> None:
+    from app.core.database import SessionLocal
+    from app.services.notification_service import create_notification
+
+    _event_map = {
+        ComplaintStatus.IN_PROGRESS: (
+            NotificationEventType.COMPLAINT_IN_PROGRESS,
+            "Queja en progreso",
+            f'Tu queja "{complaint_title}" está siendo atendida.',
+        ),
+        ComplaintStatus.RESOLVED: (
+            NotificationEventType.COMPLAINT_RESOLVED,
+            "Queja resuelta",
+            f'Tu queja "{complaint_title}" ha sido resuelta.',
+        ),
+        ComplaintStatus.REJECTED: (
+            NotificationEventType.COMPLAINT_REJECTED,
+            "Queja rechazada",
+            f'Tu queja "{complaint_title}" fue rechazada.',
+        ),
+    }
+
+    if new_status not in _event_map:
+        return
+
+    event_type, title, body = _event_map[new_status]
+
+    db = SessionLocal()
+    try:
+        create_notification(
+            db,
+            id_user=user_id,
+            category=NotificationCategory.REPORTS,
+            event_type=event_type,
+            title=title,
+            body=body,
+            reference_id=complaint_id,
+        )
+    finally:
+        db.close()
+
+
+async def _serialize_complaint(complaint: Complaint) -> ComplaintResponse:
+    image_responses = []
+    for image in complaint.images:
+        image_responses.append(
+            {
+                "id": image.id,
+                "url": await storage_service.get_presigned_url(
+                    settings.R2_BUCKET_PRIVATE,
+                    image.url,
+                ),
+                "created_at": image.created_at,
+            }
+        )
+
+    evidence_responses = []
+    for evidence in complaint.evidences:
+        evidence_responses.append(
+            {
+                "id": evidence.id,
+                "url": await storage_service.get_presigned_url(
+                    settings.R2_BUCKET_PRIVATE,
+                    evidence.url,
+                ),
+                "created_at": evidence.created_at,
+            }
+        )
+
+    resolved_history = sorted(
+        [
+            h
+            for h in complaint.status_history
+            if h.new_status == ComplaintStatus.RESOLVED
+        ],
+        key=lambda h: h.created_at,
+        reverse=True,
+    )
+    resolution_comment = resolved_history[0].comment if resolved_history else None
+
+    return ComplaintResponse(
+        id=complaint.id,
+        type=complaint.type,
+        title=complaint.title,
+        description=complaint.description,
+        category=complaint.category,
+        id_building=complaint.id_building,
+        classroom=complaint.classroom,
+        status=complaint.status,
+        has_appealed=complaint.has_appealed,
+        created_at=complaint.created_at,
+        images=image_responses,
+        evidences=evidence_responses,
+        resolution_comment=resolution_comment,
+    )
+
+
+@router.post(
+    "",
+    response_model=ComplaintResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(_require_complaint_create_content_type)],
+)
+async def create_complaint(
+    background_tasks: BackgroundTasks,
+    title: str = Form(...),
+    description: str = Form(...),
+    category: ComplaintCategory = Form(...),
+    type: ComplaintType = Form(default=ComplaintType.REPORT),
+    id_building: int | None = Form(default=None),
+    classroom: str | None = Form(default=None),
+    images: list[UploadFile] | None = File(default=None),
+    current_user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Crea una nueva queja con datos multipart/form-data.
+    El campo images es opcional (0..3 archivos).
+    """
+    # Bloqueo de imágenes en Sugerencias
+    if type == ComplaintType.SUGGESTION and images:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Las sugerencias no pueden incluir imágenes",
+        )
+
+    if images and len(images) > 3:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Máximo 3 imágenes permitidas",
+        )
+
+    title_clean, description_clean = _validate_create_complaint_text(
+        title=title,
+        description=description,
+    )
+    classroom_clean = _normalize_optional_text(classroom)
+
+    # Las sugerencias no deben tener ubicación ni aceptar datos de edificio/salón.
+    if type == ComplaintType.SUGGESTION:
+        if id_building is not None or classroom_clean is not None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Las sugerencias no pueden incluir ubicación",
+            )
+
+    is_suggestion = type == ComplaintType.SUGGESTION
+    complaint = Complaint(
+        id_user=current_user.id,
+        type=type,
+        title=title_clean,
+        description=description_clean,
+        category=category,
+        id_building=None if is_suggestion else id_building,
+        classroom=None if is_suggestion else classroom_clean,
+        status=None if is_suggestion else ComplaintStatus.PENDING,
+    )
+    db.add(complaint)
+    db.flush()
+
+    if images:
+        for image in images:
+            object_key = await storage_service.upload_file(
+                image,
+                settings.R2_BUCKET_PRIVATE,
+                f"complaints/{complaint.id}/images",
+            )
+            db.add(ComplaintImage(id_complaint=complaint.id, url=object_key))
+
+    if type != ComplaintType.SUGGESTION:
+        db.add(
+            ComplaintStatusHistory(
+                id_complaint=complaint.id,
+                id_user=current_user.id,
+                old_status=None,
+                new_status=ComplaintStatus.PENDING,
+            )
+        )
+    db.commit()
+
+    background_tasks.add_task(
+        _notify_complaint_submitted,
+        user_id=current_user.id,
+        complaint_id=complaint.id,
+        complaint_title=complaint.title,
+    )
+
+    complaint = db.execute(
+        select(Complaint)
+        .options(
+            selectinload(Complaint.images),
+            selectinload(Complaint.evidences),
+            selectinload(Complaint.status_history),
+        )
+        .where(Complaint.id == complaint.id)
+    ).scalar_one()
+
+    return await _serialize_complaint(complaint)
+
+
+@router.get("/me", response_model=list[ComplaintListItemResponse])
+async def get_my_complaints(
+    current_user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    complaints = (
+        db.execute(
+            select(Complaint)
+            .where(Complaint.id_user == current_user.id)
+            .order_by(Complaint.created_at.desc(), Complaint.id.desc())
+        )
+        .scalars()
+        .all()
+    )
+
+    return [
+        ComplaintListItemResponse(
+            id=complaint.id,
+            type=complaint.type,
+            title=complaint.title,
+            status=complaint.status,
+            created_at=complaint.created_at,
+        )
+        for complaint in complaints
+    ]
+
+
+@router.get("/{complaint_id}", response_model=ComplaintResponse)
+async def get_my_complaint_detail(
+    complaint_id: int,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    complaint = db.execute(
+        select(Complaint)
+        .options(
+            selectinload(Complaint.images),
+            selectinload(Complaint.evidences),
+            selectinload(Complaint.status_history),
+        )
+        .where(Complaint.id == complaint_id)
+    ).scalar_one_or_none()
+
+    if complaint is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Queja no encontrada",
+        )
+
+    is_staff_or_admin = current_user.role in {RoleName.STAFF, RoleName.ADMIN}
+    if complaint.id_user != current_user.id and not is_staff_or_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes acceso a esta queja",
+        )
+
+    return await _serialize_complaint(complaint)
+
+
+async def require_staff_role(
+    current_user: CurrentUser = Depends(get_current_user),
+) -> CurrentUser:
+    if current_user.role not in {RoleName.STAFF, RoleName.ADMIN}:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Acceso denegado. Se requieren permisos de Staff o Administrador.",
+        )
+    return current_user
+
+
+@router.get("", response_model=ComplaintListResponse)
+async def get_all_complaints(
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_staff_role),
+):
+    stats_rows = db.execute(
+        select(Complaint.status, func.count().label("cnt")).group_by(Complaint.status)
+    ).all()
+
+    stats_map: dict[str, int] = {
+        row.status.value: row.cnt for row in stats_rows if row.status is not None
+    }
+    total = db.scalar(select(func.count()).select_from(Complaint))
+
+    rows = (
+        db.execute(
+            select(Complaint)
+            .options(selectinload(Complaint.images), selectinload(Complaint.evidences))
+            .order_by(Complaint.created_at.desc(), Complaint.id.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        .scalars()
+        .all()
+    )
+
+    complaint_items = [ComplaintOut.model_validate(row) for row in rows]
+
+    return ComplaintListResponse(
+        items=complaint_items,
+        total=total,
+        limit=limit,
+        offset=offset,
+        stats=ComplaintStats(
+            total=total,
+            pending=stats_map.get(ComplaintStatus.PENDING.value, 0),
+            in_progress=stats_map.get(ComplaintStatus.IN_PROGRESS.value, 0),
+            resolved=stats_map.get(ComplaintStatus.RESOLVED.value, 0),
+        ),
+    )
+
+
+@router.post(
+    "/{complaint_id}/evidence",
+    response_model=ComplaintResponse,
+    dependencies=[Depends(_require_multipart_content_type)],
+)
+async def upload_complaint_evidence(
+    complaint_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_staff_role),
+):
+    complaint = db.execute(
+        select(Complaint).where(Complaint.id == complaint_id)
+    ).scalar_one_or_none()
+    if not complaint:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Queja no encontrada",
+        )
+
+    # Bloqueo de evidencia para Sugerencias
+    if complaint.type == ComplaintType.SUGGESTION:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Las sugerencias no pueden tener evidencia",
+        )
+
+    bucket_name = settings.R2_BUCKET_PRIVATE
+    prefix = f"complaints/{complaint_id}/evidence"
+
+    object_key = await storage_service.upload_file(
+        file=file, bucket_name=bucket_name, prefix=prefix
+    )
+
+    new_evidence = ComplaintEvidence(
+        id_complaint=complaint_id,
+        id_user=current_user.id,
+        url=object_key,
+    )
+    db.add(new_evidence)
+    db.commit()
+
+    complaint = db.execute(
+        select(Complaint)
+        .options(
+            selectinload(Complaint.images),
+            selectinload(Complaint.evidences),
+            selectinload(Complaint.status_history),
+        )
+        .where(Complaint.id == complaint_id)
+    ).scalar_one()
+
+    return await _serialize_complaint(complaint)
+
+
+@router.patch("/{complaint_id}/status")
+async def update_complaint_status(
+    complaint_id: int,
+    status_update: ComplaintStatusUpdate,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_staff_role),
+):
+    complaint = db.execute(
+        select(Complaint)
+        .options(selectinload(Complaint.evidences))
+        .where(Complaint.id == complaint_id)
+    ).scalar_one_or_none()
+    if not complaint:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Queja no encontrada",
+        )
+
+    if complaint.type == ComplaintType.SUGGESTION:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Las sugerencias no tienen flujo de estados",
+        )
+
+    _validate_status_transition(complaint.status, status_update.status)
+
+    if status_update.status == ComplaintStatus.RESOLVED:
+        if not complaint.evidences:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No se puede resolver una queja sin antes subir una evidencia.",
+            )
+
+    old_status = complaint.status
+    complaint.status = status_update.status
+
+    db.add(
+        ComplaintStatusHistory(
+            id_complaint=complaint.id,
+            old_status=old_status,
+            new_status=status_update.status,
+            id_user=current_user.id,
+            comment=status_update.comment,
+        )
+    )
+    db.commit()
+
+    background_tasks.add_task(
+        _notify_complaint_status_changed,
+        user_id=complaint.id_user,
+        complaint_id=complaint.id,
+        complaint_title=complaint.title,
+        new_status=status_update.status,
+    )
+
+    return {
+        "message": "Estado actualizado exitosamente",
+        "new_status": complaint.status,
+    }
+
+
+@router.delete("/{complaint_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_complaint(
+    complaint_id: int,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    complaint = db.execute(
+        select(Complaint).where(Complaint.id == complaint_id)
+    ).scalar_one_or_none()
+
+    if complaint is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Queja no encontrada",
+        )
+
+    is_owner = complaint.id_user == current_user.id
+    is_staff_or_admin = current_user.role in {RoleName.STAFF, RoleName.ADMIN}
+
+    if not is_owner and not is_staff_or_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permiso para eliminar esta queja",
+        )
+
+    db.delete(complaint)
+    db.commit()
+
+
+@router.patch("/{complaint_id}", response_model=ComplaintResponse)
+async def update_complaint(
+    complaint_id: int,
+    body: ComplaintUpdate,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    complaint = db.execute(
+        select(Complaint)
+        .options(
+            selectinload(Complaint.images),
+            selectinload(Complaint.evidences),
+            selectinload(Complaint.status_history),
+        )
+        .where(Complaint.id == complaint_id)
+    ).scalar_one_or_none()
+
+    if complaint is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Queja no encontrada",
+        )
+
+    if complaint.id_user != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes acceso a esta queja",
+        )
+
+    if complaint.type == ComplaintType.SUGGESTION:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Las sugerencias no pueden ser editadas",
+        )
+
+    if complaint.status != ComplaintStatus.PENDING:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Solo se pueden editar quejas en estado PENDING",
+        )
+
+    if body.title is not None:
+        title_clean = body.title.strip()
+        if not title_clean:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="El título no puede estar vacío",
+            )
+        complaint.title = title_clean
+    if body.description is not None:
+        description_clean = body.description.strip()
+        if not description_clean:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="La descripción no puede estar vacía",
+            )
+        if len(description_clean) > MAX_DESCRIPTION_LENGTH:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="La descripción no puede exceder 1000 caracteres",
+            )
+        complaint.description = description_clean
+
+    db.commit()
+    db.refresh(complaint)
+
+    return await _serialize_complaint(complaint)

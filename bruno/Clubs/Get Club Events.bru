@@ -1,0 +1,24 @@
+meta {
+  name: Get Club Events
+  type: http
+  seq: 11
+}
+
+get {
+  url: {{base_url}}/clubs/{{club_id}}/events
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{auth_token}}
+}
+
+vars:pre-request {
+  club_id: 1
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

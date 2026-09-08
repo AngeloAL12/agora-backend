@@ -1,0 +1,30 @@
+meta {
+  name: Update my Career
+  type: http
+  seq: 2
+}
+
+patch {
+  url: {{base_url}}/users/me
+  body: multipartForm
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{auth_token}}
+}
+
+body:multipart-form {
+  id_career: 1
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}
+
+docs {
+  # Actualizar mi Carrera
+  Actualiza el perfil del usuario autenticado a través de `PATCH /users/me`.
+  Envía el campo `id_career` como multipart form para que el backend pueda procesarlo correctamente.
+}

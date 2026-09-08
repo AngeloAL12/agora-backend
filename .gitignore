@@ -24,4 +24,6 @@ test.db
 
 # IDEs
 .vscode/
+.idea/.DS_Store
 .idea/
+.wrangler/

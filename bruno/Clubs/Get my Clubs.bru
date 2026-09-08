@@ -1,0 +1,20 @@
+meta {
+  name: Get my Clubs
+  type: http
+  seq: 17
+}
+
+get {
+  url: {{base_url}}/clubs/me
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{auth_token}}
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

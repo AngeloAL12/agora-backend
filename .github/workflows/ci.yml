@@ -5,6 +5,42 @@ on: [ push, pull_request ]
 jobs:
   quality-check:
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: agora_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/agora_test
+      REDIS_URL: redis://localhost:6379/0
+      SECRET_KEY: test
+      R2_ACCOUNT_ID: test-account-id
+      R2_ACCESS_KEY_ID: test-key-id
+      R2_SECRET_ACCESS_KEY: test-secret
+      R2_BUCKET_PRIVATE: test-private
+      R2_BUCKET_PUBLIC: test-public
+      R2_PUBLIC_URL: https://pub-test.r2.dev
     steps:
       - uses: actions/checkout@v4
 
@@ -29,6 +65,3 @@ jobs:
 
       - name: Run Tests with Coverage
         run: uv run pytest --cov=app --cov-report=term-missing --cov-fail-under=80
-        env:
-          DATABASE_URL: postgresql://test
-          SECRET_KEY: test

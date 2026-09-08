@@ -1,0 +1,33 @@
+meta {
+  name: Get All Complaints
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{base_url}}/complaints?limit=20&offset=0
+  body: none
+  auth: bearer
+}
+
+params:query {
+  limit: 20
+  offset: 0
+}
+
+auth:bearer {
+  token: {{admin_token}}
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}
+
+docs {
+  # Obtener Todas las Quejas
+  Lista todas las quejas registradas en el sistema.
+  
+  ## Autenticación
+  Requiere Bearer Token con privilegios de Staff o Admin.
+}

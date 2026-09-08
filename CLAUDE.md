@@ -2,67 +2,41 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Commands
+> Most operational guidance (commands, env gotchas, architecture map, git hooks) is in **AGENTS.md** — read that first.
 
-```bash
-# Install dependencies
-uv sync --group dev
+## Project overview
 
-# Run development server
-uv run uvicorn app.main:app --reload
+FastAPI REST backend for Agora, a campus community platform. Core domains: auth (JWT + Google/Microsoft OAuth2), clubs, complaints (with image uploads to Cloudflare R2), and campus map.
 
-# Run all tests
-uv run pytest
+## Tech stack
 
-# Run a single test file
-uv run pytest tests/app/models/test_auth.py
+- **Framework**: FastAPI + Uvicorn
+- **ORM**: SQLAlchemy 2.0 (async-compatible sessions)
+- **DB**: PostgreSQL in prod, SQLite in-memory for tests
+- **Migrations**: Alembic (metadata from `app.core.database.Base`)
+- **Validation**: Pydantic v2
+- **Storage**: Aioboto3 → Cloudflare R2 (two buckets: private + public)
+- **Tooling**: UV (package manager), Ruff (lint + format)
 
-# Run a single test
-uv run pytest tests/app/models/test_auth.py::test_create_user
+## Layer conventions
 
-# Lint
-uv run ruff check .
-
-# Format
-uv run ruff format .
-
-# Auto-fix lint issues
-uv run ruff check . --fix
-
-# Database migrations
-alembic revision --autogenerate -m "description"
-alembic upgrade head
+```
+routers/ → schemas/ → services/ → models/ → database
 ```
 
-## Architecture
+- Routers handle HTTP, delegate business logic to services.
+- Schemas (Pydantic) define request/response contracts separate from ORM models.
+- Database dependency injected via `Depends(get_db)` — override in tests via `apply_override` fixture in `tests/conftest.py`.
 
-FastAPI backend for an authentication and role-management system. Early-stage project with models and infrastructure in place, routers/schemas/services directories ready for feature development.
+## Test fixtures
 
-**Stack:** FastAPI, SQLAlchemy 2.0 (ORM), PostgreSQL (prod) / SQLite (tests), Alembic (migrations), Pydantic Settings, Python-JOSE (JWT), Passlib/bcrypt.
+Key fixtures in `tests/conftest.py`:
 
-**Structure:**
-- `app/main.py` — FastAPI app, current endpoints (`/`, `/test`, `/health/db`)
-- `app/core/config.py` — Pydantic `BaseSettings`; requires `DATABASE_URL` and `SECRET_KEY` in `.env`
-- `app/core/database.py` — SQLAlchemy engine, `SessionLocal`, `Base`, `get_db()` dependency
-- `app/models/auth/` — ORM models: `User`, `Role`, `UserSession`, `StaffWhitelist`
-- `app/routers/`, `app/schemas/`, `app/services/` — empty, ready for expansion
-- `alembic/` — migrations; `env.py` auto-discovers `app/models`
-- `tests/conftest.py` — pytest fixtures; uses SQLite in-memory DB for all tests
+- `db` — test DB session (SQLite in-memory)
+- `clean_db` — truncates all tables between tests
+- `user_role` — pre-created role for test users
+- `apply_override` — swaps `get_db` with test session
 
-**Key patterns:**
-- DB sessions injected via `Depends(get_db)` in route handlers
-- SQLAlchemy 2.0 style: `Mapped[type]` and `mapped_column()` in all models
-- `server_default=func.now()` for `created_at`; `onupdate=func.now()` for `updated_at`
-- Tests create/drop tables per-session; use `db` fixture for DB-dependent tests
+## Adding new models
 
-## Environment
-
-Copy `.env.example` to `.env` and set:
-- `DATABASE_URL` — PostgreSQL connection string (Neon or local)
-- `SECRET_KEY` — JWT signing key
-- `ALGORITHM` — defaults to `HS256`
-- `ACCESS_TOKEN_EXPIRE_MINUTES` — defaults to `30`
-
-## Code Quality
-
-Pre-commit hooks enforce ruff lint/format on commit and pytest (80% coverage minimum) on push. Conventional commit messages are required. Coverage threshold is enforced in CI (`.github/workflows/ci.yml`).
+Re-export new model modules in `app/models/__init__.py`; otherwise Alembic autogenerate misses the table.

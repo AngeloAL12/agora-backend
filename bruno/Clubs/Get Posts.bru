@@ -1,0 +1,25 @@
+meta {
+  name: Get Posts
+  type: http
+  seq: 21
+}
+
+get {
+  url: {{base_url}}/clubs/{{club_id}}/posts/{{post_id}}
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{auth_token}}
+}
+
+vars:pre-request {
+  club_id: 32
+  post_id: 1
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

@@ -1,0 +1,25 @@
+meta {
+  name: Get My Complaints
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{base_url}}/complaints/me
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{auth_token}}
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}
+
+docs {
+  # Obtener Mis Quejas
+  Lista todas las quejas que el usuario autenticado ha registrado en el sistema.
+}

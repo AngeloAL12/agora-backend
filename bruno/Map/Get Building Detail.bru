@@ -1,0 +1,32 @@
+meta {
+  name: Get Building Detail
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{base_url}}/map/buildings/{{building_id}}
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{auth_token}}
+}
+
+vars:pre-request {
+  building_id: 1
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}
+
+docs {
+  # Detalle de Edificio
+  Obtiene la información detallada de un edificio específico en el campus.
+  
+  ## Parámetros de Ruta
+  - `building_id`: ID único del edificio.
+}

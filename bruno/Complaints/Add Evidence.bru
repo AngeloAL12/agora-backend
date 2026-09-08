@@ -1,0 +1,39 @@
+meta {
+  name: Add Evidence
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{base_url}}/complaints/{{complaint_id}}/evidence
+  body: multipartForm
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{admin_token}}
+}
+
+body:multipart-form {
+  file: @file(C:\Users\omaca\OneDrive\Imágenes\Capturas de pantalla\Captura de pantalla 2023-10-23 210735.png)
+}
+
+vars:pre-request {
+  complaint_id: 8
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}
+
+docs {
+  # Agregar Evidencia a Queja
+  Permite al staff administrativo subir un archivo (foto/documento) como evidencia de que la queja ha sido atendida o resuelta.
+  
+  ## Parámetros de Ruta
+  - `complaint_id`: ID de la queja a la cual se le añadirá evidencia.
+  
+  ## Cuerpo (Multipart)
+  - `file`: Archivo de evidencia.
+}

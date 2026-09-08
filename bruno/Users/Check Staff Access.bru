@@ -1,0 +1,25 @@
+meta {
+  name: Check Staff Access
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{base_url}}/users/me
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{admin_token}}
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}
+
+docs {
+  # Verificar Acceso Staff
+  Recupera el perfil del usuario actual y permite validar que el campo `role` sea `STAFF` o `ADMIN`.
+}
