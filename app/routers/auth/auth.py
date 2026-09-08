@@ -25,6 +25,7 @@ from app.services.auth.auth_service import RoleNotFoundError, verify_and_save_us
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 GOOGLE_EMAIL_ALLOWLIST = frozenset({"ag0rapro12@gmail.com", "agoradmin@gmail.com"})
+MICROSOFT_EMAIL_ALLOWLIST = frozenset({"ag0ra.itm.pro@outlook.com"})
 
 
 def _is_allowed_google_email(email: str) -> bool:
@@ -32,6 +33,14 @@ def _is_allowed_google_email(email: str) -> bool:
     return (
         normalized_email.endswith("@itmexicali.edu.mx")
         or normalized_email in GOOGLE_EMAIL_ALLOWLIST
+    )
+
+
+def _is_allowed_microsoft_email(email: str) -> bool:
+    normalized_email = email.strip().casefold()
+    return (
+        normalized_email.endswith("@mexicali.tecnm.mx")
+        or normalized_email in MICROSOFT_EMAIL_ALLOWLIST
     )
 
 
@@ -164,7 +173,7 @@ async def microsoft_mobile_login(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Acceso denegado. No se encontró un correo válido.",
             )
-        if not email.endswith("@mexicali.tecnm.mx"):
+        if not _is_allowed_microsoft_email(email):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=(
