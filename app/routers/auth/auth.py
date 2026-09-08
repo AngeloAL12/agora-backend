@@ -24,7 +24,7 @@ from app.services.auth.auth_service import RoleNotFoundError, verify_and_save_us
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-GOOGLE_EMAIL_ALLOWLIST = frozenset({"ag0rapro12@gmail.com"})
+GOOGLE_EMAIL_ALLOWLIST = frozenset({"ag0rapro12@gmail.com", "agoradmin@gmail.com"})
 
 
 def _is_allowed_google_email(email: str) -> bool:
